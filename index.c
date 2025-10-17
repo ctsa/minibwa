@@ -29,7 +29,7 @@ mb_bwt_t *mb_bwt_libsais(const l2b_t *l2b, int sa_bit, int both_strand, int n_th
 #else
     libsais64(seq, a + 1, len, fs, 0);
 #endif
-	a[0] = len;
+	a[0] = len; // libsais doesn't write a[0], which always equals to len
 
 	n_ssa = (len + (1<<sa_bit)) >> sa_bit;
 	ssa = kom_calloc(uint64_t, n_ssa);

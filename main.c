@@ -88,12 +88,12 @@ int main_test(int argc, char *argv[])
 		}
 		fprintf(stderr, "t = %.3f\n", kom_cputime() - t);
 	} else {
-		uint64_t j, k = 10, cnt[4];
+		uint64_t k = 10, cnt[4];
 		int c;
 		mb_bwt_rank1a(bwt, k, cnt);
 		for (c = 0; c < 4; ++c)
 			printf("%lld\n", cnt[c]);
-		for (j = 0; j < bwt->n_sa; ++j) printf("%lld\n", bwt->sa[j]);
+		//uint64_t j; for (j = 0; j < bwt->n_sa; ++j) printf("%lld\n", bwt->sa[j]);
 	}
 	mb_bwt_destroy(bwt);
 	return 0;
