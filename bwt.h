@@ -21,7 +21,7 @@ typedef struct {
 
 typedef struct {
 	uint64_t x[2];
-	uint32_t size, info;
+	uint64_t size, info;
 } mb_sai_t;
 
 typedef struct { size_t n, m; mb_sai_t *a; } mb_sai_v;
@@ -38,11 +38,14 @@ mb_bwt_t *mb_bwt_load_raw(const char *fn); // from raw bwt_gen.c output
 int mb_bwt_save(const char *fn, const mb_bwt_t *bwt);
 mb_bwt_t *mb_bwt_load(const char *fn);
 mb_bwt_t *mb_bwt_init_from_raw(int is_byte, const void *raw_, uint64_t len, uint64_t primary);
-void mb_bwt_gen_sa(mb_bwt_t *bwt, uint32_t sa_bit);
 
 uint64_t mb_bwt_rank11(const mb_bwt_t *bwt, uint64_t k, uint8_t c);
 void mb_bwt_rank1a(const mb_bwt_t *bwt, uint64_t k, uint64_t cnt[4]);
 void mb_bwt_rank2a(const mb_bwt_t *bwt, uint64_t k, uint64_t l, uint64_t cntk[4], uint64_t cntl[4]);
+
+int64_t mb_bwt_smem(void *km, const mb_bwt_t *f, int64_t min_len, int64_t min_occ, int64_t len, const uint8_t *q, int64_t x, mb_sai_t *p);
+
+void mb_bwt_gen_sa(mb_bwt_t *bwt, uint32_t sa_bit);
 uint64_t mb_bwt_sa(const mb_bwt_t *bwt, uint64_t k);
 int64_t mb_bwt_sa_multi(void *km, const mb_bwt_t *f, int64_t lo, int64_t hi, int64_t max_sa, uint64_t *sa);
 

@@ -206,30 +206,33 @@ void mb_bwt_extend(const mb_bwt_t *bwt, const mb_sai_t *ik, mb_sai_t ok[4], int 
 	ok[0].x[is_back] = ok[1].x[is_back] + tl[1];
 }
 
-int64_t mb_bwt_smem1(void *km, const mb_bwt_t *f, int64_t min_occ, int64_t min_len, int64_t len, const uint8_t *q, int64_t x, mb_sai_v *mem, int32_t check_long)
+int64_t mb_bwt_smem(void *km, const mb_bwt_t *f, int64_t min_len, int64_t min_occ, int64_t len, const uint8_t *q, int64_t x, mb_sai_t *p)
 {
-	int64_t i, j;
-	mb_sai_t ik, ok[4], *p;
+	int64_t i, j, xn;
+	mb_sai_t ik, ok[4];
 
 	assert(len <= INT32_MAX); // this can be relaxed if we define a new struct for mem
+	p->size = 0;
 	if (len - x < min_len) return len;
+	for (i = x, xn = -1; i < x + min_len; ++i) // find the last N in [x,x+min_len)
+		if (q[i] > 3) xn = i;
+	if (xn >= 0) return xn + 1;
 	mb_bwt_set_intv(f, q[x + min_len - 1], &ik);
 	for (i = x + min_len - 2; i >= x; --i) { // backward extension
 		int c = q[i];
+		if (c > 3) break;
 		mb_bwt_extend(f, &ik, ok, 1);
 		if (ok[c].size < min_occ) break;
 		ik = ok[c];
 	}
 	if (i >= x) return i + 1; // no MEM found
-	if (check_long) return -1;
 	for (j = x + min_len; j < len; ++j) { // forward extension
 		int c = 3 - q[j];
+		if (q[j] > 3) break;
 		mb_bwt_extend(f, &ik, ok, 0);
 		if (ok[c].size < min_occ) break;
 		ik = ok[c];
 	}
-	Kgrow(km, mb_sai_t, mem->a, mem->n, mem->m);
-	p = &mem->a[mem->n++];
 	*p = ik;
 	p->info = (uint64_t)x<<32 | j;
 	if (j == len) return len;
@@ -241,16 +244,6 @@ int64_t mb_bwt_smem1(void *km, const mb_bwt_t *f, int64_t min_occ, int64_t min_l
 		ik = ok[c];
 	}
 	return i + 1;
-}
-
-int64_t mb_bwt_smem(void *km, const mb_bwt_t *f, int64_t len, const uint8_t *q, mb_sai_v *mem, int64_t min_occ, int64_t min_len)
-{
-	int64_t x = 0;
-	mem->n = 0;
-	do {
-		x = mb_bwt_smem1(km, f, min_occ, min_len, len, q, x, mem, 0);
-	} while (x < len);
-	return mem->n;
 }
 
 /***************************
@@ -354,6 +347,10 @@ int64_t mb_bwt_sa_multi(void *km, const mb_bwt_t *f, int64_t lo, int64_t hi, int
 	ssa_aux_t aux;
 	uint64_t ok[4], ol[4];
 	if (max_sa == 0 || lo >= hi) return 0;
+	if (hi - lo == 1) {
+		sa[0] = mb_bwt_sa(f, lo);
+		return 1;
+	}
 	memset(&aux, 0, sizeof(aux));
 	aux.max_sa = max_sa < hi - lo? max_sa : hi - lo;
 	aux.m_a = 256, aux.n_a = 0;

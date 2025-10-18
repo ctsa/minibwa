@@ -8,10 +8,11 @@
 #define MB_VERSION "0.0"
 
 int main_index(int argc, char *argv[]);
+int main_seed(int argc, char *argv[]);
 int main_bench(int argc, char *argv[]);
+
 int main_fa2bit(int argc, char *argv[]);
 int main_raw2bwt(int argc, char *argv[]);
-int main_test(int argc, char *argv[]);
 int main_genraw(int argc, char *argv[]);
 int main_genbwt(int argc, char *argv[]);
 int main_gensa(int argc, char *argv[]);
@@ -23,6 +24,7 @@ static int usage(FILE *fp)
 	fprintf(fp, "  General:\n");
 	fprintf(fp, "    index      index reference FASTA\n");
 	fprintf(fp, "    bench      performance evaluation\n");
+	fprintf(fp, "    seed       test seeding strategies\n");
 	fprintf(fp, "    version    print the version number\n");
 	fprintf(fp, "  Separate indexing routines:\n");
 	fprintf(fp, "    fa2bit     convert FASTA to the long-2bit format\n");
@@ -40,12 +42,12 @@ int main(int argc, char *argv[])
 	if (argc == 1) return usage(stdout);
 	else if (strcmp(argv[1], "index") == 0) ret = main_index(argc-1, argv+1);
 	else if (strcmp(argv[1], "bench") == 0) ret = main_bench(argc-1, argv+1);
+	else if (strcmp(argv[1], "seed") == 0) ret = main_seed(argc-1, argv+1);
 	else if (strcmp(argv[1], "fa2bit") == 0) ret = main_fa2bit(argc-1, argv+1);
 	else if (strcmp(argv[1], "genraw") == 0) ret = main_genraw(argc-1, argv+1);
 	else if (strcmp(argv[1], "raw2bwt") == 0) ret = main_raw2bwt(argc-1, argv+1);
 	else if (strcmp(argv[1], "genbwt") == 0) ret = main_genbwt(argc-1, argv+1);
 	else if (strcmp(argv[1], "gensa") == 0) ret = main_gensa(argc-1, argv+1);
-	else if (strcmp(argv[1], "test") == 0) ret = main_test(argc-1, argv+1);
 	else if (strcmp(argv[1], "version") == 0) {
 		printf("%s\n", MB_VERSION);
 		return 0;
@@ -141,7 +143,63 @@ int main_bench(int argc, char *argv[])
 	return 0;
 }
 
-int main_test(int argc, char *argv[])
+#include <zlib.h>
+#include "kseq.h"
+KSEQ_INIT(gzFile, gzread);
+
+int main_seed(int argc, char *argv[])
 {
+	mb_bwt_t *bwt;
+	ketopt_t o = KETOPT_INIT;
+	gzFile fp;
+	kseq_t *ks;
+	int c, min_len = 19, min_occ = 1, max_size_out = 20;
+	uint64_t *sa;
+	kstring_t out = {0};
+
+	while ((c = ketopt(&o, argc, argv, 1, "l:s:w:", 0)) >= 0) {
+		if (c == 'l') min_len = atoi(o.arg);
+		else if (c == 's') min_occ = atoi(o.arg);
+		else if (c == 'w') max_size_out = atoi(o.arg);
+	}
+	if (argc - o.ind < 2) {
+		fprintf(stderr, "Usage: minibwa seed [options] <in.mbw> <in.fq>\n");
+		fprintf(stderr, "Options:\n");
+		fprintf(stderr, "  -l INT     min seed length [%d]\n", min_len);
+		fprintf(stderr, "  -s INT     min interval size [%d]\n", min_occ);
+		return 1;
+	}
+
+	bwt = mb_bwt_load(argv[o.ind]);
+	kom_assert(bwt, "failed to open the BWT file.");
+	fp = strcmp(argv[o.ind+1], "-")? gzopen(argv[o.ind+1], "rb") : gzdopen(0, "rb");
+	ks = kseq_init(fp);
+	sa = kom_calloc(uint64_t, max_size_out);
+	while (kseq_read(ks) >= 0) {
+		int64_t x = 0, i;
+		mb_sai_t p;
+		out.l = 0;
+		kom_sprintf_lite(&out, "SQ\t%s\t%ld\n", ks->name.s, ks->seq.l);
+		for (i = 0; i < ks->seq.l; ++i)
+			ks->seq.s[i] = kom_nt4_table[(uint8_t)ks->seq.s[i]];
+		do {
+			x = mb_bwt_smem(0, bwt, min_len, min_occ, ks->seq.l, (uint8_t*)ks->seq.s, x, &p);
+			if (p.size > 0) {
+				kom_sprintf_lite(&out, "EM\t%ld\t%ld\t%ld", p.info>>32, p.info&0xffffffffull, p.size);
+				if (p.size <= max_size_out) {
+					int64_t j, n_sa = mb_bwt_sa_multi(0, bwt, p.x[0], p.x[0] + p.size, max_size_out, sa);
+					for (j = 0; j < n_sa; ++j)
+						kom_sprintf_lite(&out, "\t%ld", sa[j]);
+				}
+				kom_sprintf_lite(&out, "\n");
+			}
+		} while (x < ks->seq.l);
+		kom_sprintf_lite(&out, "//\n");
+		fputs(out.s, stdout);
+	}
+	free(sa);
+	kseq_destroy(ks);
+	gzclose(fp);
+	mb_bwt_destroy(bwt);
 	return 0;
 }

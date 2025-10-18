@@ -21,6 +21,14 @@
 
 #define kom_assert(cond, msg) if ((cond) == 0) kom_panic(__func__, (msg))
 
+#ifndef KSTRING_T
+#define KSTRING_T kstring_t
+typedef struct {
+	size_t l, m;
+	char *s;
+} kstring_t;
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -30,6 +38,8 @@ extern int kom_verbose, kom_dbg;
 char *kom_strdup(const char *src);
 int64_t kom_parse_num(const char *str, char **q);
 void kom_panic(const char *func, const char *msg);
+
+int64_t kom_sprintf_lite(kstring_t *s, const char *fmt, ...);
 
 double kom_cputime(void);
 double kom_realtime(void); // call at the beginning to reset the timer
