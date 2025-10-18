@@ -113,7 +113,7 @@ int main_bench(int argc, char *argv[])
 		for (i = 0; i < n; ++i) {
 			uint64_t s, k = kom_splitmix64(&x) % bwt->seq_len;
 			s = mb_bwt_sa(bwt, k);
-			cs = (cs >> 32) ^ s;
+			cs = cs * 0xbf58476d1ce4e5b9ULL ^ s;
 			if (print_val) printf("%lld\n", s);
 		}
 	} else if (type == MB_BENCH_MSA) {
@@ -131,7 +131,7 @@ int main_bench(int argc, char *argv[])
 			for (j = 0; j < n_sa; ++j)
 				xor ^= sa[j];
 			#endif
-			cs = (cs >> 32) ^ xor;
+			cs = cs * 0xbf58476d1ce4e5b9ULL ^ xor;
 			if (print_val) printf("%lld\n", xor);
 		}
 	}

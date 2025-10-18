@@ -316,7 +316,7 @@ typedef struct {
 KSORT_INIT(ssa_intv, ssa_intv_t, intv_lt)
 
 typedef struct {
-	int64_t n_sa, max_sa, n0;
+	int64_t n_sa, max_sa;
 	int32_t n_a, m_a;
 	ssa_intv_t *a;
 	uint64_t *sa;
@@ -333,14 +333,13 @@ static inline void ssa_add_intv1(ssa_aux_t *aux, int64_t lo, int64_t hi, int64_t
 
 static int32_t ssa_add_intv(const mb_bwt_t *bwt, ssa_aux_t *aux, int64_t lo, int64_t hi, int64_t off)
 {
-	int64_t m = aux->n0;
-	int64_t k = ((lo - m) >> bwt->sa_bit << bwt->sa_bit) + m;
+	int64_t k = lo >> bwt->sa_bit << bwt->sa_bit;
 	if (aux->n_sa == aux->max_sa) return -1;
 	for (; k < hi; k += 1LL << bwt->sa_bit) {
-		int64_t l = (k - m) >> bwt->sa_bit;
+		int64_t l = k >> bwt->sa_bit;
 		if (k < lo) continue;
 		assert(l < bwt->n_sa && aux->n_sa < aux->max_sa);
-		aux->sa[aux->n_sa] = bwt->sa[l];
+		aux->sa[aux->n_sa] = off + bwt->sa[l];
 		aux->n_sa++;
 		if (aux->n_sa == aux->max_sa) return -1;
 		if (lo < k) ssa_add_intv1(aux, lo, k, off);
@@ -359,7 +358,7 @@ int64_t mb_bwt_sa_multi(void *km, const mb_bwt_t *f, int64_t lo, int64_t hi, int
 	aux.max_sa = max_sa < hi - lo? max_sa : hi - lo;
 	aux.m_a = 256, aux.n_a = 0;
 	aux.a = Kmalloc(km, ssa_intv_t, aux.m_a);
-	aux.km = km, aux.sa = sa, aux.n0 = 1;
+	aux.km = km, aux.sa = sa;
 	ssa_add_intv(f, &aux, lo, hi, 0);
 	while (aux.n_a > 0 && aux.n_sa < aux.max_sa) {
 		int32_t c;
