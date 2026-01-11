@@ -4,25 +4,29 @@
 #include "ketopt.h"
 #include "kommon.h"
 #include "kseq.h"
+#include "kalloc.h"
 KSEQ_INIT(gzFile, gzread);
 
 int main_fastmap(int argc, char *argv[])
 {
 	mb_idx_t *idx;
 	mb_bwt_t *bwt;
+	mb_mopt_t opt;
 	ketopt_t o = KETOPT_INIT;
 	gzFile fp;
 	kseq_t *ks;
 	int c, min_len = 19, min_occ = 1, max_occ = 1, max_size_out = 20;
 	int max_sub_occ = 10, max_anchor_occ = 500;
-	int use_sa1 = 0, test_seed = 0, test_anchor = 0;
+	int use_sa1 = 0, test_seed = 0, test_anchor = 0, test_chain = 0;
+	const char *preset = 0;
 	uint64_t *sa, m_a = 0;
 	mb_sai_t *a = 0;
 	kstring_t out = {0};
 	mb_sai_v u = {0,0,0};
 	mb_anchor_v v = {0,0,0};
 
-	while ((c = ketopt(&o, argc, argv, 1, "l:s:w:1c:SA", 0)) >= 0) {
+	mb_mopt_init(&opt);
+	while ((c = ketopt(&o, argc, argv, 1, "l:s:w:1c:SACx:", 0)) >= 0) {
 		if (c == 'l') min_len = atoi(o.arg);
 		else if (c == 's') min_occ = atoi(o.arg);
 		else if (c == 'c') max_occ = atoi(o.arg);
@@ -30,17 +34,25 @@ int main_fastmap(int argc, char *argv[])
 		else if (c == '1') use_sa1 = 1;
 		else if (c == 'S') test_seed = 1;
 		else if (c == 'A') test_seed = test_anchor = 1;
+		else if (c == 'C') test_seed = test_anchor = test_chain = 1;
+		else if (c == 'x') preset = o.arg;
+	}
+	if (preset && mb_set_preset(preset, &opt) < 0) {
+		fprintf(stderr, "[ERROR] unknown preset '%s'\n", preset);
+		return 1;
 	}
 	if (max_occ < min_occ) max_occ = min_occ;
 	if (argc - o.ind < 2) {
 		fprintf(stderr, "Usage: minibwa fastmap [options] <idx-prefix> <in.fq>\n");
 		fprintf(stderr, "Options:\n");
+		fprintf(stderr, "  -x STR     preset: sr (short reads) []\n");
 		fprintf(stderr, "  -l INT     min seed length [%d]\n", min_len);
 		fprintf(stderr, "  -s INT     min interval size [%d]\n", min_occ);
 		fprintf(stderr, "  -c INT     max interval size [%d]\n", max_occ);
 		fprintf(stderr, "  -w INT     max interval size to output coordinates [%d]\n", max_size_out);
 		fprintf(stderr, "  -S         test the seeding algorithm\n");
 		fprintf(stderr, "  -A         test the anchoring algorithm\n");
+		fprintf(stderr, "  -C         test the chaining algorithm\n");
 		fprintf(stderr, "  -1         use unbatched sa\n");
 		return 1;
 	}
@@ -62,6 +74,20 @@ int main_fastmap(int argc, char *argv[])
 			if (test_anchor) {
 				mb_anchor(0, idx, &u, max_anchor_occ, &v);
 				mb_anchor_sort(v.n, v.a);
+				if (test_chain) {
+					int n_u;
+					uint64_t *cu;
+					mb_anchor_t *ca;
+					ca = mb_lchain_dp(opt.max_gap, opt.max_gap, opt.bw, opt.max_chain_skip, opt.max_chain_iter,
+									  1, opt.min_chain_score, opt.chn_pen_gap, opt.chn_pen_skip,
+									  v.n, v.a, &n_u, &cu, 0);
+					v.a = 0; v.n = v.m = 0; // ownership transferred to ca
+					kom_sprintf_lite(&out, "%s", ks->name.s);
+					for (i = 0; i < n_u; ++i)
+						kom_sprintf_lite(&out, "\t%d:%d", (int32_t)(cu[i]>>32), (int32_t)cu[i]);
+					kom_sprintf_lite(&out, "\n");
+					free(ca); free(cu);
+				}
 			} else {
 				for (i = 0; i < u.n; ++i) {
 					uint32_t st = u.a[i].info >> 32;

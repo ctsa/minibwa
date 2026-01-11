@@ -23,3 +23,21 @@ void mb_mopt_init(mb_mopt_t *opt)
 	opt->n_thread = 4;
 	opt->mb_size = 500000000;
 }
+
+int mb_set_preset(const char *preset, mb_mopt_t *opt)
+{
+	if (preset == 0) {
+		mb_mopt_init(opt);
+	} else if (strcmp(preset, "sr") == 0) {
+		mb_mopt_init(opt);
+		opt->flag |= MB_F_FRAG_MODE;
+		opt->max_gap = 100;
+		opt->bw = opt->bw_long = 100;
+		opt->min_chain_score = 25;
+		opt->max_occ = 5000;
+		opt->mb_size = 50000000;
+	} else {
+		return -1;
+	}
+	return 0;
+}
