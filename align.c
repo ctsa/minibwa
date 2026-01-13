@@ -502,6 +502,7 @@ static void mb_max_stretch(const mb_hit_t *r, const mb_anchor_t *a, int32_t *as,
 
 static void mb_align1(void *km, const mb_mopt_t *opt, const mb_idx_t *mi, int qlen, uint8_t *qseq0[2], mb_hit_t *r, mb_hit_t *r2, int n_a, mb_anchor_t *a, ksw_extz_t *ez)
 {
+	const int32_t max_back = 10; // allow up to 10bp "edges" from chain ends
 	int is_sr = !!(opt->flag & MB_F_SR);
 	int32_t rev = a[r->as].sid&1, as1, cnt1;
 	uint8_t *tseq, *qseq, *tseq2 = 0;
@@ -529,10 +530,10 @@ static void mb_align1(void *km, const mb_mopt_t *opt, const mb_idx_t *mi, int ql
 		mm_fix_bad_ends(r, a, opt->bw, opt->min_chain_score * 2, &as1, &cnt1);
 		mm_filter_bad_seeds(km, as1, cnt1, a, 10, 40, opt->max_gap>>1, 10);
 		mm_filter_bad_seeds_alt(km, as1, cnt1, a, 30, opt->max_gap>>1);
-		ts = a[as1].tpos - (a[as1].len>>1); // TODO: check if this is optimal when .len is large
-		qs = a[as1].qpos - (a[as1].len>>1);
-		te = a[as1+cnt1-1].tpos - (a[as1+cnt1-1].len>>1);
-		qe = a[as1+cnt1-1].qpos - (a[as1+cnt1-1].len>>1);
+		ts = a[as1].tpos + 1 - a[as1].len + (a[as1].len>>1 < max_back? a[as1].len>>1 : max_back);
+		qs = a[as1].qpos + 1 - a[as1].len + (a[as1].len>>1 < max_back? a[as1].len>>1 : max_back);
+		te = a[as1+cnt1-1].tpos + 1 - (a[as1+cnt1-1].len>>1 < max_back? a[as1+cnt1-1].len>>1 : max_back);
+		qe = a[as1+cnt1-1].qpos + 1 - (a[as1+cnt1-1].len>>1 < max_back? a[as1+cnt1-1].len>>1 : max_back);
 	}
 	assert(cnt1 > 0);
 
@@ -571,7 +572,7 @@ static void mb_align1(void *km, const mb_mopt_t *opt, const mb_idx_t *mi, int ql
 		te0 = a[r->as + r->cnt - 1].tpos + 1;
 		qe0 = a[r->as + r->cnt - 1].qpos + 1;
 		te1 = mi->l2b->ctg[tid].len, qe1 = qlen;
-		if (qe < qlen && te < (int32_t)mi->l2b->ctg[tid].len) {
+		if (qe < qlen && te < mi->l2b->ctg[tid].len) {
 			l = qlen - qe < opt->max_gap? qlen - qe : opt->max_gap;
 			qe1 = qe1 < qe + l? qe1 : qe + l;
 			qe0 = qe0 > qe1? qe0 : qe1; // at least include qe0
@@ -592,7 +593,7 @@ static void mb_align1(void *km, const mb_mopt_t *opt, const mb_idx_t *mi, int ql
 	}
 
 	assert(te0 > ts0);
-	tseq = (uint8_t*)kmalloc(km, te0 - ts0);
+	tseq = Kmalloc(km, uint8_t, te0 - ts0);
 
 	if (qs > 0 && ts > 0) { // left extension; probably the condition can be changed to "qs > qs0 && ts > ts0"
 		qseq = &qseq0[rev][qs0];
@@ -617,8 +618,8 @@ static void mb_align1(void *km, const mb_mopt_t *opt, const mb_idx_t *mi, int ql
 			te = a[as1+i].tpos + 1;
 			qe = a[as1+i].qpos + 1;
 		} else {
-			te = a[as1+i].tpos - (a[as1+i].len>>1);
-			qe = a[as1+i].qpos - (a[as1+i].len>>1);
+			te = a[as1+i].tpos + 1 - (a[as1+i].len>>1 < max_back? a[as1+i].len>>1 : max_back);
+			qe = a[as1+i].qpos + 1 - (a[as1+i].len>>1 < max_back? a[as1+i].len>>1 : max_back);
 		}
 		te1 = te, qe1 = qe;
 		if (i == cnt1 - 1 || (a[as1+i].flag&MB_SEED_LONG_JOIN) || (qe - qs >= opt->min_ksw_len && te - ts >= opt->min_ksw_len)) { // gap filling
@@ -641,9 +642,7 @@ static void mb_align1(void *km, const mb_mopt_t *opt, const mb_idx_t *mi, int ql
 				else
 					mb_align_pair(km, opt, qe - qs, qseq, te - ts, tseq, mat, bw1, -1, opt->zdrop, ksw_flag|KSW_EZ_APPROX_MAX, ez);
 			} else { // perform normal gapped alignment
-				int32_t skip_full = 0;
-				if (!skip_full)
-					mb_align_pair(km, opt, qe - qs, qseq, te - ts, tseq, mat, bw1, -1, opt->zdrop, ksw_flag|KSW_EZ_APPROX_MAX, ez); // first pass: with approximate Z-drop
+				mb_align_pair(km, opt, qe - qs, qseq, te - ts, tseq, mat, bw1, -1, opt->zdrop, ksw_flag|KSW_EZ_APPROX_MAX, ez); // first pass: with approximate Z-drop
 			}
 			// test Z-drop and inversion Z-drop
 			if ((zdrop_code = mm_test_zdrop(km, opt, qseq, tseq, ez->n_cigar, ez->cigar, mat)) != 0)
