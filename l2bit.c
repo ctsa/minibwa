@@ -9,7 +9,7 @@ KSEQ_INIT(gzFile, gzread);
 int64_t l2b_intv2cid(const l2b_t *l2b, uint64_t st, uint64_t en, int64_t *cst, int *rev)
 {
 	int64_t s, lo = 0, hi = l2b->n_ctg, mid;
-	const l2b_ctg_t *ctg;
+	const l2b_ctg_t *ctg = 0;
 	assert(st < en);
 	if (en > l2b->tot_len * 2) return -3;
 	if (st < l2b->tot_len && l2b->tot_len < en) return -2;
@@ -26,7 +26,7 @@ int64_t l2b_intv2cid(const l2b_t *l2b, uint64_t st, uint64_t en, int64_t *cst, i
 	return s + (en - st) <= ctg->off + ctg->len? mid : -1;
 }
 
-int64_t l2b_getseq(const l2b_t *l2b, int32_t is_rev, int64_t tid, int64_t st, int64_t en, uint8_t *seq)
+int64_t l2b_getseq(const l2b_t *l2b, int32_t is_rev, int64_t tid, int64_t st, int64_t en, uint8_t *seq) // TODO: ambiguous bases
 {
 	const l2b_ctg_t *ctg;
 	int64_t i;

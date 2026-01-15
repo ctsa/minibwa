@@ -94,7 +94,8 @@ static void *worker_pipeline(void *shared, int step, void *in)
 				if (s->n_hit[i] > 0) { // the query has at least one hit
 					for (j = 0; j < s->n_hit[i]; ++j) {
 						const mb_hit_t *h = &s->hit[i][j];
-						mb_fmt_paf_basic(&out, idx->l2b, t->l_seq, h, t->name);
+						if (h->parent == h->id || (p->opt->flag & MB_F_OUT_2ND))
+							mb_fmt_paf_basic(&out, idx->l2b, t->l_seq, h, t->name);
 					}
 				} else if (p->opt->flag & MB_F_WRITE_UNMAP) { // TODO: output unmapped reads
 				}
@@ -179,14 +180,15 @@ static int usage(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "    -k INT           min k-mer length [%d]\n", opt->min_len);
 	fprintf(fp, "    -p FLOAT         min secondary-to-primary score ratio [%g]\n", opt->pri_ratio);
 	fprintf(fp, "    -N INT           retain at most INT secondary alignments [%d]\n", opt->best_n);
+	fprintf(fp, "    -C               perform chaining only without base alignment\n");
 	fprintf(fp, "  Input/Output:\n");
 	fprintf(fp, "    -t INT           number of worker threads [%d]\n", opt->n_thread);
 	fprintf(fp, "    -K NUM           process NUM-bp query sequences in a batch [500m]\n");
-	fprintf(fp, "    --frag=y|n       paired-end/fragment mode [no]\n");
+	fprintf(fp, "    -S               output secondary alignment\n");
 	fprintf(fp, "    --version        print version number\n");
 	return fp == stdout? 0 : 1;
 }
-
+#if 0
 static inline void yes_or_no(mb_opt_t *opt, uint64_t flag, int long_idx, const char *arg, int yes_to_set)
 {
 	if (yes_to_set) {
@@ -199,10 +201,10 @@ static inline void yes_or_no(mb_opt_t *opt, uint64_t flag, int long_idx, const c
 		else fprintf(stderr, "[WARNING]\033[1;31m option '--%s' only accepts 'yes' or 'no'.\033[0m\n", long_options[long_idx].name);
 	}
 }
-
+#endif
 int main_map(int argc, char *argv[])
 {
-	const char *opt_str = "x:o:k:p:t:K:N:";
+	const char *opt_str = "x:o:k:p:t:K:N:CS";
 	int32_t c;
 	mb_idx_t *idx;
 	mb_opt_t mo;
@@ -229,6 +231,8 @@ int main_map(int argc, char *argv[])
 		if (c == 'k') mo.min_len = atoi(o.arg);
 		else if (c == 'p') mo.pri_ratio = atof(o.arg);
 		else if (c == 'N') mo.best_n = atoi(o.arg);
+		else if (c == 'C') mo.flag |= MB_F_NO_ALN;
+		else if (c == 'S') mo.flag |= MB_F_OUT_2ND;
 		else if (c == 'o') fn_out = o.arg;
 		else if (c == 't') mo.n_thread = atoi(o.arg);
 		else if (c == 'K') mo.mb_size = kom_parse_num(o.arg, 0);

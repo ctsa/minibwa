@@ -327,6 +327,7 @@ mb_hit_t *mb_map(const mb_opt_t *opt, const mb_idx_t *idx, int64_t qlen, const c
 	mb_anchor_t *a;
 	mb_hit_t *hit;
 
+	*n_hit_ = 0;
 	seq = Kmalloc(b->km, uint8_t, qlen);
 	for (i = 0; i < qlen; ++i)
 		seq[i] = kom_nt4_table[(uint8_t)seq0[i]];
@@ -336,7 +337,7 @@ mb_hit_t *mb_map(const mb_opt_t *opt, const mb_idx_t *idx, int64_t qlen, const c
 	hash  = mb_hash64(hash);
 
 	chn_pen_gap = opt->chain_gap_scale * .01 * opt->min_len;
-	chn_pen_skip = opt->chain_skip_scale * 0.01 * opt->min_len;
+	chn_pen_skip = opt->chain_skip_scale * .01 * opt->min_len;
 	mb_seed_intv(b->km, idx->bwt, qlen, seq, opt->min_len, opt->max_sub_occ, &u);
 	mb_anchor(b->km, idx, &u, qlen, opt->max_occ, &v);
 	a = mb_lchain_dp(b->km, opt->max_gap, opt->max_gap, opt->bw, opt->max_chain_skip, opt->max_chain_iter,
@@ -348,8 +349,11 @@ mb_hit_t *mb_map(const mb_opt_t *opt, const mb_idx_t *idx, int64_t qlen, const c
 	kfree(b->km, w);
 	mb_set_parent(b->km, opt->mask_level, opt->mask_len, n_hit, hit, opt->a * 2 + opt->b, 0);
 	mb_select_sub(b->km, opt->pri_ratio, opt->min_len * 2, opt->best_n, &n_hit, hit);
-	hit = mb_align_skeleton(b->km, opt, idx, qlen, seq0, &n_hit, hit, a);
-	mb_set_parent(b->km, opt->mask_level, opt->mask_len, n_hit, hit, opt->a * 2 + opt->b, 0);
+	if (!(opt->flag & MB_F_NO_ALN)) {
+		hit = mb_align_skeleton(b->km, opt, idx, qlen, seq0, &n_hit, hit, a);
+		mb_set_parent(b->km, opt->mask_level, opt->mask_len, n_hit, hit, opt->a * 2 + opt->b, 0);
+		mb_select_sub(b->km, opt->pri_ratio, opt->min_len * 2, opt->best_n, &n_hit, hit);
+	}
 	kfree(b->km, a);
 	kfree(b->km, seq);
 	*n_hit_ = n_hit;

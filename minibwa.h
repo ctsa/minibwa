@@ -12,6 +12,8 @@
 #define MB_F_LONG             (0x10LL)   // long-sequence mode
 #define MB_F_EQX              (0x20LL)   // = in CIGAR
 #define MB_F_NO_KALLOC        (0x40LL)   // disable kalloc
+#define MB_F_NO_ALN           (0x80LL)   // skip base alignment
+#define MB_F_OUT_2ND          (0x100LL)  // write secondary alignments
 
 #define MB_CIGAR_MATCH      0
 #define MB_CIGAR_INS        1

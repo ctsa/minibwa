@@ -117,14 +117,14 @@ int main_bench(int argc, char *argv[])
 			uint64_t cntk[4], cntl[4];
 			mb_bwt_rank2a(bwt, k, l, cntk, cntl);
 			cs = cs * cntk[1] + cntl[0];
-			if (print_val) printf("%lld\n", cntk[1]);
+			if (print_val) printf("%ld\n", (long)cntk[1]);
 		}
 	} else if (type == MB_BENCH_SA) {
 		for (i = 0; i < n; ++i) {
 			uint64_t s, k = kom_splitmix64(&x) % bwt->seq_len;
 			s = mb_bwt_sa(bwt, k);
 			cs = cs * 0xbf58476d1ce4e5b9ULL ^ s;
-			if (print_val) printf("%lld\n", s);
+			if (print_val) printf("%ld\n", (long)s);
 		}
 	} else if (type == MB_BENCH_MSA) {
 		for (i = 0; i < n; ++i) {
@@ -139,10 +139,11 @@ int main_bench(int argc, char *argv[])
 				uint64_t sa[intv], n_sa = l - k;
 				for (j = 0; j < n_sa; ++j) sa[j] = k + j;
 				mb_bwt_sa_batch(0, bwt, l - k, sa);
+
 				for (j = 0; j < n_sa; ++j) xor ^= sa[j];
 			}
 			cs = cs * 0xbf58476d1ce4e5b9ULL ^ xor;
-			if (print_val) printf("%lld\n", xor);
+			if (print_val) printf("%ld\n", (long)xor);
 		}
 	}
 	fprintf(stderr, "checksum = %lx\n", (unsigned long)cs);
