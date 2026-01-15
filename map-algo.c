@@ -356,17 +356,16 @@ void mb_set_mapq(void *km, int n_regs, mb_hit_t *regs, int min_chain_sc, int mat
 		if (r->inv) {
 			r->mapq = 0;
 		} else if (r->parent == r->id) {
-			int mapq, subsc;
+			int mapq, mapq_alt, subsc;
 			float pen_s1 = r->score > 100? 1.0f : 0.01f * r->score;
 			subsc = r->subsc > min_chain_sc? r->subsc : min_chain_sc;
 			if (r->p && r->p->dp_max2 > 0 && r->p->dp_max > 0) {
 				float x, identity = (float)r->mlen / r->blen;
 				x = (float)r->p->dp_max2 * subsc / r->p->dp_max / r->score0;
 				mapq = (int)(pen_s1 * identity * q_coef * (1.0f - x * x) * logf((float)r->p->dp_max / match_sc));
-				if (!is_sr) {
-					int mapq_alt = (int)(6.02f * identity * identity * (r->p->dp_max - r->p->dp_max2) / match_sc + .499f); // BWA-MEM like mapQ, mostly for short reads
-					mapq = mapq < mapq_alt? mapq : mapq_alt; // in case the long-read heuristic fails
-				}
+				// mapq_alt is close to the bwa-mem formula for short reads but minimap2 uses it only for long reads. What is happening?!
+				mapq_alt = (int)(6.02f * identity * identity * (r->p->dp_max - r->p->dp_max2) / match_sc + .499f);
+				mapq = mapq < mapq_alt? mapq : mapq_alt; // in case the long-read heuristic fails
 			} else {
 				float x = (float)subsc / r->score0;
 				if (r->p) {

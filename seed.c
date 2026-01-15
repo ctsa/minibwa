@@ -80,6 +80,16 @@ void mb_seed_intv(void *km, const mb_bwt_t *bwt, int32_t len, const uint8_t *seq
 		if (en - st < min_len * 2 || v->a[i].size > max_sub_occ)
 			continue;
 		x = st;
+		#if 1
+		int32_t sub_min_len = (en - st) / 2 > min_len? (en - st) / 2 : min_len;
+		do {
+			x = mb_bwt_smem(bwt, len, seq, x, sub_min_len, v->a[i].size + 1, v->a[i].size + 1, &p);
+			if (p.size > v->a[i].size) {
+				Kgrow(km, mb_sai_t, v->a, v->n, v->m);
+				v->a[v->n++] = p;
+			}
+		} while (x < en);
+		#else
 		do {
 			x = mb_bwt_seed_greedy(bwt, en, seq, x, min_len, max_sub_occ * 2, &p);
 			if (p.size > v->a[i].size) {
@@ -93,6 +103,7 @@ void mb_seed_intv(void *km, const mb_bwt_t *bwt, int32_t len, const uint8_t *seq
 				}
 			}
 		} while (x < en);
+		#endif
 	}
 }
 
