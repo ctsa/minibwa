@@ -359,6 +359,48 @@ void mb_bwt_sa_batch(void *km, const mb_bwt_t *bwt, int64_t n, uint64_t *x)
 	kfree(km, z);
 }
 
+/******************
+ * k-mer counting *
+ ******************/
+
+typedef struct {
+	mb_sai_t p;
+	int d, c;
+} count_pair64_t;
+
+void mb_bwt_count_kmer(const mb_bwt_t *bwt, int32_t depth, mb_sai_t *s)
+{
+	count_pair64_t *p, stack[64];
+	int32_t i, a, s_top = 0;
+	uint8_t str[16];
+	assert(depth <= 15);
+	for (a = 0; a < 4; ++a) {
+		p = &stack[s_top++];
+		mb_bwt_set_intv(bwt, a, &p->p);
+		p->d = 1, p->c = a;
+	}
+	while (s_top > 0) {
+		count_pair64_t top = stack[--s_top];
+		mb_sai_t ok[4];
+		if (top.d > 0) str[depth - top.d] = top.c;
+		mb_bwt_extend(bwt, &top.p, ok, 1);
+		for (a = 0; a < 4; ++a) {
+			str[depth - top.d - 1] = a;
+			if (top.d != depth - 1) {
+				p = &stack[s_top++];
+				p->p = ok[a];
+				p->d = top.d + 1;
+				p->c = a;
+			} else {
+				uint64_t x = 0;
+				for (i = 0; i < depth; ++i)
+					x |= (uint64_t)str[i] << i * 2;
+				s[x] = ok[a];
+			}
+		}
+	}
+}
+
 /*************************
  * Read/write BWT and SA *
  *************************/
