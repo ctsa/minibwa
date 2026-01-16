@@ -107,10 +107,51 @@ void mb_seed_intv(void *km, const mb_bwt_t *bwt, int32_t len, const uint8_t *seq
 	}
 }
 
+typedef struct {
+	int64_t st, en;
+	int64_t x0, size;
+} anchor_aux_t;
+
+typedef struct {
+	int64_t a, i;
+} sa_aux_t;
+
+static void process_batch(void *km, const mb_idx_t *idx, const anchor_aux_t *aux, int32_t m, sa_aux_t *b, uint64_t *a, int32_t qlen, const mb_sai_v *u, mb_anchor_v *v)
+{
+	int64_t j, k;
+	for (k = 0; k < m; ++k) a[k] = b[k].a;
+	mb_bwt_sa_batch(km, idx->bwt, m, a);
+	for (k = 0; k < m; ++k) {
+		const anchor_aux_t *p = &aux[b[k].i];
+		for (j = p->st; j < p->en; ++j) {
+			int32_t qs = u->a[j].info>>32, qe = (int32_t)u->a[j].info;
+			int32_t rev, len = qe - qs;
+			int64_t tid, cst;
+			const l2b_ctg_t *ctg;
+			mb_anchor_t *q;
+			tid = l2b_intv2cid(idx->l2b, a[k], a[k] + len, &cst, &rev);
+			rev = !!rev; // make sure rev is 0 or 1
+			if (tid < 0) continue; // bridging boundaries
+			ctg = &idx->l2b->ctg[tid];
+			Kgrow(km, mb_anchor_t, v->a, v->n, v->m);
+			q = &v->a[v->n++];
+			memset(q, 0, sizeof(*q));
+			q->sid = tid << 1 | rev;
+			q->len = len;
+			q->qpos = rev? qlen - 1 - qs : qs + len - 1;
+			q->tpos = ctg->off * 2 + ctg->len * rev + cst + len - 1; // for sorting
+		}
+	}
+}
+
 void mb_anchor(void *km, const mb_idx_t *idx, const mb_sai_v *u, int32_t qlen, int32_t max_occ, mb_anchor_v *v)
 {
+	const int batch_size = 20;
+	int32_t n_aux, m;
 	int64_t i, i0, j, k;
 	uint64_t *a;
+	sa_aux_t *b;
+	anchor_aux_t *aux;
 
 	v->n = 0;
 	if (u->n == 0) return; // no anchors
@@ -125,51 +166,47 @@ void mb_anchor(void *km, const mb_idx_t *idx, const mb_sai_v *u, int32_t qlen, i
 		}
 	}
 
-	for (i = 0, k = 0; i < u->n; ++i) // calculate the size of v->a
+	for (i = 0, k = 0; i < u->n; ++i) // pre-calculate the size of v->a
 		k += u->a[i].size < max_occ? u->a[i].size : max_occ;
 	Kgrow(km, mb_anchor_t, v->a, k - 1, v->m); // preallocate
 
-	a = Kmalloc(km, uint64_t, max_occ * 2);
-	for (i = 1, i0 = 0; i <= u->n; ++i) { // a bit overkilling for short reads, but may be beneficial for long centromeric reads
+	for (i = 1, i0 = 0, n_aux = 0; i <= u->n; ++i) // pre-compute n_aux
+		if (i == u->n || u->a[i].x[0] != u->a[i0].x[0] || u->a[i].size != u->a[i0].size)
+			++n_aux, i0 = i;
+	aux = Kmalloc(km, anchor_aux_t, n_aux);
+	for (i = 1, i0 = 0, n_aux = 0; i <= u->n; ++i) { // fill aux[]
 		if (i == u->n || u->a[i].x[0] != u->a[i0].x[0] || u->a[i].size != u->a[i0].size) {
-			const mb_sai_t *p = &u->a[i0];
-			int32_t n = 0;
-			if (p->size <= max_occ) {
-				for (j = 0; j < p->size; ++j)
-					a[n++] = p->x[0] + j;
-			} else {
-				for (j = 0; j < p->size && n < max_occ;) {
-					int32_t step = (p->size - j) / (max_occ - n);
-					if (step < 1) step = 1;
-					a[n++] = p->x[0] + j;
-					j += step;
-				}
-			}
-			mb_bwt_sa_batch(km, idx->bwt, n, a);
-			for (k = 0; k < n; ++k) {
-				for (j = i0; j < i; ++j) {
-					int32_t qs = u->a[j].info>>32, qe = (int32_t)u->a[j].info;
-					int32_t rev, len = qe - qs;
-					int64_t tid, cst;
-					const l2b_ctg_t *ctg;
-					mb_anchor_t *q;
-					tid = l2b_intv2cid(idx->l2b, a[k], a[k] + len, &cst, &rev);
-					rev = !!rev; // make sure rev is 0 or 1
-					if (tid < 0) continue;
-					ctg = &idx->l2b->ctg[tid];
-					Kgrow(km, mb_anchor_t, v->a, v->n, v->m);
-					q = &v->a[v->n++];
-					memset(q, 0, sizeof(*q));
-					q->sid = tid << 1 | rev;
-					q->len = len;
-					q->qpos = rev? qlen - 1 - qs : qs + len - 1;
-					q->tpos = ctg->off * 2 + ctg->len * rev + cst + len - 1; // for sorting
-				}
-			}
+			anchor_aux_t *p = &aux[n_aux++];
+			p->st = i0, p->en = i, p->x0 = u->a[i0].x[0], p->size = u->a[i0].size;
 			i0 = i;
 		}
 	}
+
+	a = Kmalloc(km, uint64_t, max_occ * 2);
+	b = Kmalloc(km, sa_aux_t, max_occ * 2);
+	for (i = 0, m = 0; i < n_aux; ++i) {
+		anchor_aux_t *p = &aux[i];
+		if (p->size + m > batch_size) {
+			process_batch(km, idx, aux, m, b, a, qlen, u, v);
+			m = 0;
+		}
+		if (p->size <= max_occ) { // get SA for all of them
+			for (j = 0; j < p->size; ++j)
+				b[m].a = p->x0 + j, b[m++].i = i;
+		} else { // sample up to max_occ
+			int32_t n = 0;
+			for (j = 0; j < p->size && n < max_occ; ++n) {
+				int32_t step = (p->size - j) / (max_occ - n);
+				if (step < 1) step = 1;
+				b[m].a = p->x0 + j, b[m++].i = i;
+				j += step;
+			}
+		}
+	}
+	process_batch(km, idx, aux, m, b, a, qlen, u, v);
+	kfree(km, b);
 	kfree(km, a);
+	kfree(km, aux);
 
 	radix_sort_mb_anchor(v->a, v->a + v->n);
 	for (i = 0; i < v->n; ++i) {
