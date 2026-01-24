@@ -26,8 +26,6 @@ typedef struct {
 	void *km;
 } kswq_t;
 
-static const ksw_llrst_t g_defr = { 0, -1, -1, -1, -1, -1, -1 };
-
 /**
  * Initialize the query data structure
  *
@@ -115,15 +113,13 @@ ksw_llrst_t ksw_ll_u8_core(void *q_, int tlen, const uint8_t *target, int _gapo,
 	kswq_t *q = (kswq_t*)q_;
 	int slen, i, m_b, n_b, te = -1, gmax = 0, minsc, endsc;
 	uint64_t *b;
-	__m128i zero, gapoe, gape, shift, *H0, *H1, *E, *Hmax;
-	ksw_llrst_t r;
+	__m128i gapoe, gape, shift, *H0, *H1, *E, *Hmax;
+	ksw_llrst_t r = { 0, -1, -1, -1, -1, -1, -1 };
 
 	// initialization
-	r = g_defr;
 	minsc = (xtra&KSW_LL_SUBO)? xtra&0xffff : 0x10000;
 	endsc = (xtra&KSW_LL_STOP)? xtra&0xffff : 0x10000;
 	m_b = n_b = 0; b = 0;
-	zero = _mm_set1_epi32(0);
 	gapoe = _mm_set1_epi8(_gapo + _gape);
 	gape = _mm_set1_epi8(_gape);
 	shift = _mm_set1_epi8(q->shift);
@@ -135,7 +131,8 @@ ksw_llrst_t ksw_ll_u8_core(void *q_, int tlen, const uint8_t *target, int _gapo,
 	// the core loop
 	for (i = 0; i < tlen; ++i) {
 		int j, k, imax;
-		__m128i e, h, t, f = zero, max = zero, *S = q->qp + target[i] * slen; // s is the 1st score vector
+		__m128i e, h, t, f, max, *S = q->qp + target[i] * slen; // s is the 1st score vector
+		f = max = _mm_setzero_si128();
 		h = _mm_load_si128(H0 + slen - 1); // h={2,5,8,11,14,17,-1,-1} in the above example
 		h = _mm_slli_si128(h, 1); // h=H(i-1,-1); << instead of >> because x64 is little-endian
 		for (j = 0; LIKELY(j < slen); ++j) {
@@ -180,10 +177,7 @@ end_loop_u8:
 		imax = ksw_max_u8(max); // imax is the maximum number in max
 		if (imax >= minsc) { // write the b array; this condition adds branching unfornately
 			if (n_b == 0 || (int32_t)b[n_b-1] + 1 != i) { // then append
-				if (n_b == m_b) {
-					m_b = m_b? m_b<<1 : 8;
-					b = Krealloc(q->km, uint64_t, b, m_b);
-				}
+				if (n_b == m_b) Kgrow(q->km, uint64_t, b, n_b, m_b);
 				b[n_b++] = (uint64_t)imax<<32 | i;
 			} else if ((int)(b[n_b-1]>>32) < imax) b[n_b-1] = (uint64_t)imax<<32 | i; // modify the last
 		}
@@ -243,15 +237,13 @@ ksw_llrst_t ksw_ll_i16_core(void *q_, int tlen, const uint8_t *target, int _gapo
 	kswq_t *q = (kswq_t*)q_;
 	int slen, i, m_b, n_b, te = -1, gmax = 0, minsc, endsc;
 	uint64_t *b;
-	__m128i zero, gapoe, gape, *H0, *H1, *E, *Hmax;
-	ksw_llrst_t r;
+	__m128i gapoe, gape, *H0, *H1, *E, *Hmax;
+	ksw_llrst_t r = { 0, -1, -1, -1, -1, -1, -1 };
 
 	// initialization
-	r = g_defr;
 	minsc = (xtra&KSW_LL_SUBO)? xtra&0xffff : 0x10000;
 	endsc = (xtra&KSW_LL_STOP)? xtra&0xffff : 0x10000;
 	m_b = n_b = 0; b = 0;
-	zero = _mm_set1_epi32(0);
 	gapoe = _mm_set1_epi16(_gapo + _gape);
 	gape = _mm_set1_epi16(_gape);
 	H0 = q->H0; H1 = q->H1; E = q->E; Hmax = q->Hmax;
@@ -262,7 +254,8 @@ ksw_llrst_t ksw_ll_i16_core(void *q_, int tlen, const uint8_t *target, int _gapo
 	// the core loop
 	for (i = 0; i < tlen; ++i) {
 		int j, k, imax;
-		__m128i e, t, h, f = zero, max = zero, *S = q->qp + target[i] * slen; // s is the 1st score vector
+		__m128i e, t, h, f, max, *S = q->qp + target[i] * slen; // s is the 1st score vector
+		f = max = _mm_setzero_si128();
 		h = _mm_load_si128(H0 + slen - 1); // h={2,5,8,11,14,17,-1,-1} in the above example
 		h = _mm_slli_si128(h, 2);
 		for (j = 0; LIKELY(j < slen); ++j) {
@@ -289,17 +282,14 @@ ksw_llrst_t ksw_ll_i16_core(void *q_, int tlen, const uint8_t *target, int _gapo
 				_mm_store_si128(H1 + j, h);
 				h = _mm_subs_epu16(h, gapoe);
 				f = _mm_subs_epu16(f, gape);
-				if(UNLIKELY(ksw_le_epi16(f, h))) goto end_loop_i16;
+				if (UNLIKELY(ksw_le_epi16(f, h))) goto end_loop_i16;
 			}
 		}
 end_loop_i16:
 		imax = ksw_max_i16(max);
 		if (imax >= minsc) {
 			if (n_b == 0 || (int32_t)b[n_b-1] + 1 != i) {
-				if (n_b == m_b) {
-					m_b = m_b? m_b<<1 : 8;
-					b = Krealloc(q->km, uint64_t, b, m_b);
-				}
+				if (n_b == m_b) Kgrow(q->km, uint64_t, b, n_b, m_b);
 				b[n_b++] = (uint64_t)imax<<32 | i;
 			} else if ((int)(b[n_b-1]>>32) < imax) b[n_b-1] = (uint64_t)imax<<32 | i; // modify the last
 		}
