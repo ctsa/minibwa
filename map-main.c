@@ -84,6 +84,7 @@ static void worker_for_pe(void *data, long i, int tid)
 	char *seq[2];
 	if (s->seg_cnt[i] != 2) return;
 	off = s->seg_off[i];
+	if (kom_dbg_flag & MB_DBG_QNAME) fprintf(stderr, "QP\t%s\t%d\n", s->seq[off].name, tid);
 	for (r = 0; r < 2; ++r) {
 		seq[r] = s->seq[off + r].seq;
 		len[r] = s->seq[off + r].l_seq;
@@ -259,6 +260,7 @@ static ko_longopt_t long_options[] = {
 	{ "no-kalloc",    ko_no_argument,       301 },
 	{ "outn",         ko_required_argument, 302 },
 	{ "pe-predef",    ko_optional_argument, 303 },
+	{ "rescue",       ko_required_argument, 304 },
 	{ "dbg-aln-seq",  ko_no_argument,       601 },
 	{ "dbg-anchor",   ko_no_argument,       602 },
 	{ "dbg-seed",     ko_no_argument,       603 },
@@ -283,6 +285,9 @@ static int usage(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "  Alignment:\n");
 	fprintf(fp, "    -A INT           matching score [%d]\n", opt->a);
 	fprintf(fp, "    -B INT           mismatching openalty [%d]\n", opt->b);
+	fprintf(fp, "  Paired-end:\n");
+	fprintf(fp, "    -P               skip pairing and mate resuce\n");
+	fprintf(fp, "    --rescue=INT     mate rescue for up to INT candidates [%d]\n", opt->max_rescue);
 	fprintf(fp, "  Input/Output:\n");
 	fprintf(fp, "    -t INT           number of worker threads [%d]\n", opt->n_thread);
 	fprintf(fp, "    -K NUM           process NUM-bp query sequences in a batch [500m]\n");
@@ -306,7 +311,7 @@ static inline void yes_or_no(mb_opt_t *opt, uint64_t flag, int long_idx, const c
 #endif
 int main_map(int argc, char *argv[])
 {
-	const char *opt_str = "x:o:k:c:m:p:A:B:b:O:E:t:K:N:C";
+	const char *opt_str = "x:o:k:c:m:p:A:B:b:O:E:t:K:N:CP";
 	int32_t c;
 	mb_idx_t *idx;
 	mb_opt_t mo;
@@ -338,7 +343,7 @@ int main_map(int argc, char *argv[])
 		else if (c == 'A') mo.a = atoi(o.arg);
 		else if (c == 'B') mo.b = atoi(o.arg);
 		else if (c == 'C') mo.flag |= MB_F_NO_ALN;
-		// else if (c == 'S') mo.flag |= MB_F_OUT_2ND;
+		else if (c == 'P') mo.flag &= ~MB_F_PE;
 		else if (c == 'o') fn_out = o.arg;
 		else if (c == 't') mo.n_thread = atoi(o.arg);
 		else if (c == 'K') mo.mb_size = kom_parse_num(o.arg, 0);
@@ -348,6 +353,8 @@ int main_map(int argc, char *argv[])
 			mo.out_n = atoi(o.arg);
 		} else if (c == 303) { // --pe-predef
 			mo.flag |= MB_F_PE_PREDEF;
+		} else if (c == 304) { // --rescue
+			mo.max_rescue = atoi(o.arg);
 		} else if (c == 601) { // --dbg-aln-seq
 			kom_dbg_flag |= MB_DBG_ALN_SEQ;
 		} else if (c == 602) { // --dbg-anchor

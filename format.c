@@ -13,7 +13,7 @@ void mb_fmt_paf_basic(kstring_t *s, const l2b_t *l2b, int64_t qlen, const mb_hit
 		if (p->parent == p->id) kom_sprintf_lite(s, "\ts2:i:%d", p->subsc);
 		if (p->p) {
 			int32_t nm = p->blen - p->mlen + p->p->n_ambi;
-			kom_sprintf_lite(s, "\tNM:i:%d\tAS:i:%d\tms:i:%d", nm, p->p->dp_score, p->p->dp_max);
+			kom_sprintf_lite(s, "\tNM:i:%d\tAS:i:%d\tms:i:%d\tm2:i:%d", nm, p->p->dp_score, p->p->dp_max, p->p->dp_max2);
 			if (p->p->n_cigar > 0) {
 				int32_t i;
 				kom_sprintf_lite(s, "\tcg:Z:");

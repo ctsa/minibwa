@@ -421,6 +421,7 @@ mb_hit_t *mb_map_sai(const mb_opt_t *opt, const mb_idx_t *idx, int64_t qlen, con
 {
 	uint32_t hash;
 	int32_t n_hit;
+	int32_t sub_diff = opt->a + opt->b > opt->q + opt->e? opt->a + opt->b : opt->q + opt->e;
 	uint64_t *w;
 	float chn_pen_gap;
 	mb_anchor_v v = {0,0,0};
@@ -446,13 +447,13 @@ mb_hit_t *mb_map_sai(const mb_opt_t *opt, const mb_idx_t *idx, int64_t qlen, con
 	// chain ordering
 	hit = mb_gen_hit(b->km, hash, qlen, idx->l2b, n_hit, w, a);
 	kfree(b->km, w);
-	mb_set_parent(b->km, opt->mask_level, opt->mask_len, n_hit, hit, opt->a * 2 + opt->b, 0);
+	mb_set_parent(b->km, opt->mask_level, opt->mask_len, n_hit, hit, sub_diff, 0);
 	mb_select_sub(b->km, opt->pri_ratio, opt->min_len * 2, opt->best_n, &n_hit, hit);
 
 	// base alignment
 	if (!(opt->flag & MB_F_NO_ALN)) {
 		hit = mb_align_skeleton(b->km, opt, idx, qlen, seq, &n_hit, hit, a);
-		mb_set_parent(b->km, opt->mask_level, opt->mask_len, n_hit, hit, opt->a * 2 + opt->b, 0);
+		mb_set_parent(b->km, opt->mask_level, opt->mask_len, n_hit, hit, sub_diff, 0);
 		mb_select_sub(b->km, opt->pri_ratio, opt->min_len * 2, opt->best_n, &n_hit, hit);
 	}
 	mb_set_mapq(b->km, n_hit, hit, opt->min_chain_score, opt->a, !(opt->flag & MB_F_LONG));

@@ -193,7 +193,7 @@ static void mb_matesw_align(void *km, const mb_opt_t *opt, int32_t qlen, uint8_t
 		rst = ksw_ll_i16_core(qp, tlen, tseq, gapo, gape, xtra);
 	if (kom_dbg_flag & MB_DBG_ALN_PE) {
 		int i;
-		fprintf(stderr, "===> qlen=%d; tlen=%d; score=%d; qe=%d; te=%d <===\n", qlen, tlen, rst.score, rst.qe, rst.te);
+		fprintf(stderr, "===> qlen=%d; tlen=%d; score=%d; qe=%d; te=%d <===\n", qlen, tlen, rst.score, rst.qe + 1, rst.te + 1);
 		for (i = 0; i < qlen; ++i) fputc("ACGTN"[qseq[i]], stderr);
 		fputc('\n', stderr);
 		for (i = 0; i < tlen; ++i) fputc("ACGTN"[tseq[i]], stderr);
@@ -210,16 +210,24 @@ static void mb_matesw_align(void *km, const mb_opt_t *opt, int32_t qlen, uint8_t
 		mb_seq_rev(te, tseq);
 		if (ez->n_cigar > 0 && ez->max >= opt->min_dp_max) {
 			mb_append_cigar(h, ez->n_cigar, ez->cigar);
+			h->rescued = 1;
 			h->qe = qe, h->te = te;
 			h->ts = te - (ez->reach_end? ez->mqe_t + 1 : ez->max_t + 1);
-			h->qs = qe - (ez->reach_end? 0 : ez->max_q + 1);
-			h->p->dp_max = ez->max;
-			h->p->dp_score = ez->score;
+			h->qs = qe - (ez->reach_end? qe : ez->max_q + 1);
+			h->p->dp_max = h->p->dp_score = ez->max;
 			h->p->dp_max2 = (int32_t)((double)ez->max / rst.score * rst.score2 + .499);
+			if (h->p->dp_max2 < 0) h->p->dp_max2 = 0;
 			h->score = h->score0 = rst.score;
 			h->subsc = rst.score2;
 			h->cnt = 0, h->as = -1;
 			h->parent = MB_PARENT_UNSET;
+			if (kom_dbg_flag & MB_DBG_ALN_PE) {
+				int i;
+				fprintf(stderr, "max=%d; ts=%ld; qs=%d; reach_end=%d; cigar=", ez->max, (long)h->ts, h->qs, ez->reach_end);
+				for (i = 0; i < ez->n_cigar; ++i) fprintf(stderr, "%d%c", ez->cigar[i]>>4, MB_CIGAR_STR[ez->cigar[i]&0xf]);
+				fputc('\n', stderr);
+			}
+			mb_update_extra(h, &qseq[h->qs], &tseq[h->ts], mat, opt->q, opt->e, opt->flag&MB_F_EQX, 0);
 		}
 	}
 }
@@ -287,14 +295,14 @@ static int32_t mb_matesw(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_
 			rng ^= hit[r][i].hash, max[r] = max[r] > hit[r][i].p->dp_max? max[r] : hit[r][i].p->dp_max;
 	for (r = 0, n_res = 0; r < 2; ++r)
 		for (i = 0; i < n_hit[r]; ++i)
-			if (1 || (hit[r][i].pp == 0 && hit[r][i].p->dp_max >= max[r] - opt->pen_unpair))
+			if (hit[r][i].pp == 0 && hit[r][i].p->dp_max >= max[r] - opt->pen_unpair)
 				++n_res;
 	if (n_res == 0) return 0; // nothing to rescue
 	if (n_res > opt->max_rescue) n_res = opt->max_rescue;
 	a = Kcalloc(km, uint64_t, n_res);
 	for (r = j = 0; r < 2; ++r) { // candidates for rescue
 		for (i = 0; i < n_hit[r]; ++i) {
-			if (1 || (hit[r][i].pp == 0 && hit[r][i].p->dp_max >= max[r] - opt->pen_unpair)) { // reservior sampling
+			if (hit[r][i].pp == 0 && hit[r][i].p->dp_max >= max[r] - opt->pen_unpair) { // reservior sampling
 				int32_t y;
 				y = j++ < n_res? j - 1 : (int32_t)(j * kom_u64todbl(kom_splitmix64(&rng)));
 				if (y < n_res) a[y] = (uint64_t)r << 32 | i;
@@ -335,11 +343,22 @@ static int32_t mb_matesw(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_
 
 void mb_pair(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_t n_hit[2], mb_hit_t *hit[2], const mb_pestat_t pes[4], int32_t qlen[2], char *const qseq[2])
 {
+	int32_t r, i;
 	mb_pairaux_t paux;
 	mb_pair_hits(km, opt, l2b, n_hit, hit, pes, &paux);
 	if (opt->max_rescue > 0) {
-		fprintf(stderr, "here: %d\n", paux.score);
+		int32_t sub_diff = opt->a + opt->b > opt->q + opt->e? opt->a + opt->b : opt->q + opt->e;
 		if (mb_matesw(km, opt, l2b, n_hit, hit, pes, qlen, qseq) > 0)
 			mb_pair_hits(km, opt, l2b, n_hit, hit, pes, &paux); // pair again if new hits rescued
+		for (r = 0; r < 2; ++r) {
+			for (i = 0; i < n_hit[r]; ++i) {
+				mb_hit_t *h = &hit[r][i];
+				if (!h->rescued)
+					h->n_sub = h->subsc = h->p->dp_max2 = 0;
+			}
+			mb_hit_sort(km, &n_hit[r], hit[r]);
+			mb_set_parent(km, opt->mask_level, opt->mask_len, n_hit[r], hit[r], sub_diff, 0);
+			mb_set_mapq(km, n_hit[r], hit[r], opt->min_chain_score, opt->a, !(opt->flag & MB_F_LONG));
+		}
 	}
 }

@@ -239,7 +239,7 @@ static void mm_update_cigar_eqx(mb_hit_t *r, const uint8_t *qseq, const uint8_t 
 	r->p = p;
 }
 
-static void mb_update_extra(mb_hit_t *r, const uint8_t *qseq, const uint8_t *tseq, const int8_t *mat, int8_t q, int8_t e, int is_eqx, int log_gap)
+void mb_update_extra(mb_hit_t *r, const uint8_t *qseq, const uint8_t *tseq, const int8_t *mat, int8_t q, int8_t e, int is_eqx, int log_gap)
 {
 	uint32_t k, l;
 	int32_t qshift, tshift, toff = 0, qoff = 0;
