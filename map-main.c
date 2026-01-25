@@ -107,6 +107,7 @@ static void *worker_pipeline(void *shared, int step, void *in)
 		if (s->seq) {
 			int32_t sb_len, sb_off;
 			s->p = p;
+			for (i = 0; i < 4; ++i) s->pes[i].failed = 1;
 			for (i = 0; i < s->n_seq; ++i)
 				s->seq[i].id = p->n_seq++;
 			s->tbuf = kom_calloc(mb_tbuf_t*, opt->n_thread);
@@ -145,11 +146,17 @@ static void *worker_pipeline(void *shared, int step, void *in)
     } else if (step == 1) { // step 1: map
 		step_t *s = (step_t*)in;
 		kt_for(opt->n_thread, worker_for_se_batch, in, s->n_sb);
-		if (opt->flag & MB_F_PE) {
-			void *km;
-			km = opt->flag & MB_F_NO_KALLOC? 0 : km_init();
-			mb_pestat(km, opt, s->n_frag, s->seg_off, s->seg_cnt, s->n_hit, s->hit, s->pes);
-			if (km) km_destroy(km);
+		if ((opt->flag & MB_F_PE) && s->n_frag < s->n_seq) { // PE mode
+			if (opt->flag & MB_F_PE_PREDEF) { // use predefined PE stats
+				s->pes[1].failed = 0;
+				s->pes[1].avg = opt->pe_avg, s->pes[1].std = opt->pe_std;
+				s->pes[1].lo = opt->pe_lo, s->pes[1].hi = opt->pe_hi;
+			} else { // estimate PE stats from data
+				void *km;
+				km = opt->flag & MB_F_NO_KALLOC? 0 : km_init();
+				mb_pestat(km, opt, s->n_frag, s->seg_off, s->seg_cnt, s->n_hit, s->hit, s->pes);
+				if (km) km_destroy(km);
+			}
 			kt_for(opt->n_thread, worker_for_pe, in, s->n_frag);
 		}
 		return in;
@@ -250,11 +257,12 @@ int32_t mb_map_file(const mb_opt_t *opt, const mb_idx_t *idx, int32_t n, const c
 
 static ko_longopt_t long_options[] = {
 	{ "no-kalloc",    ko_no_argument,       301 },
+	{ "outn",         ko_required_argument, 302 },
+	{ "pe-predef",    ko_optional_argument, 303 },
 	{ "dbg-aln-seq",  ko_no_argument,       601 },
 	{ "dbg-anchor",   ko_no_argument,       602 },
 	{ "dbg-seed",     ko_no_argument,       603 },
 	{ "dbg-qname",    ko_no_argument,       604 },
-	{ "outn",         ko_required_argument, 605 },
 	{ "version",      ko_no_argument,       901 },
 	{ 0, 0, 0 }
 };
@@ -335,6 +343,10 @@ int main_map(int argc, char *argv[])
 		else if (c == 'K') mo.mb_size = kom_parse_num(o.arg, 0);
 		else if (c == 301) { // --no-kalloc
 			mo.flag |= MB_F_NO_KALLOC;
+		} else if (c == 302) { // --outn
+			mo.out_n = atoi(o.arg);
+		} else if (c == 303) { // --pe-predef
+			mo.flag |= MB_F_PE_PREDEF;
 		} else if (c == 601) { // --dbg-aln-seq
 			kom_dbg_flag |= MB_DBG_ALN_SEQ;
 		} else if (c == 602) { // --dbg-anchor
@@ -343,8 +355,6 @@ int main_map(int argc, char *argv[])
 			kom_dbg_flag |= MB_DBG_SEED;
 		} else if (c == 604) { // --dbg-qname
 			kom_dbg_flag |= MB_DBG_QNAME;
-		} else if (c == 605) { // --outn
-			mo.out_n = atoi(o.arg);
 		} else if (c == 901) { // --version
 			puts(MB_VERSION);
 			exit(0);

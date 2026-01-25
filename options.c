@@ -25,6 +25,8 @@ void mb_opt_init(mb_opt_t *opt)
 	opt->max_pe_ins = 10000;
 	opt->max_rescue = 20;
 	opt->pen_unpair = 17;
+	opt->pe_avg = 400, opt->pe_std = 100;
+	opt->pe_lo = 50, opt->pe_hi = 800;
 	// I/O options
 	opt->sb_len = 1000000;
 	opt->sb_seq = 24;

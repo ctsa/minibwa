@@ -13,6 +13,7 @@
 #define MB_F_EQX              (0x20LL)   // = in CIGAR
 #define MB_F_NO_KALLOC        (0x40LL)   // disable kalloc
 #define MB_F_NO_ALN           (0x80LL)   // skip base alignment
+#define MB_F_PE_PREDEF        (0x100LL)  // use predefined PE
 
 #define MB_CIGAR_MATCH      0
 #define MB_CIGAR_INS        1
@@ -60,6 +61,7 @@ typedef struct {
 	int32_t max_pe_ins;
 	int32_t max_rescue;
 	int32_t pen_unpair;
+	int32_t pe_avg, pe_std, pe_lo, pe_hi;
 	// input/output options
 	int32_t sb_len;   // number of bases for batch smem
 	int32_t sb_seq;   // number of sequences for batch smem
