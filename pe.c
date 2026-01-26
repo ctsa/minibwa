@@ -284,63 +284,52 @@ static void mb_matesw_core(void *km, const mb_opt_t *opt, const l2b_t *l2b, cons
 
 static int32_t mb_matesw(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_t n_hit[2], mb_hit_t *hit[2], const mb_pestat_t pes[4], int32_t qlen[2], char *const qseq[2])
 {
-	int32_t r, i, j, n_res, max[2] = {0, 0}, ori_sum = n_hit[0] + n_hit[1];
-	uint64_t rng = 0, *a;
+	int32_t r, n_add;
 	mb_hit_v ha[2];
-	uint8_t *qs[2][2];
 	ksw_extz_t ez;
-
-	// collect rescue candidates
 	if (opt->max_rescue == 0) return 0;
-	for (r = 0; r < 2; ++r) // find the max score
-		for (i = 0; i < n_hit[r]; ++i)
-			rng ^= hit[r][i].hash, max[r] = max[r] > hit[r][i].p->dp_max? max[r] : hit[r][i].p->dp_max;
-	for (r = 0, n_res = 0; r < 2; ++r)
-		for (i = 0; i < n_hit[r]; ++i)
-			if (hit[r][i].proper_pair == 0 && hit[r][i].p->dp_max >= max[r] - opt->pen_unpair * opt->a)
-				++n_res;
-	if (n_res == 0) return 0; // nothing to rescue
-	if (n_res > opt->max_rescue) n_res = opt->max_rescue;
-	a = Kcalloc(km, uint64_t, n_res);
-	for (r = j = 0; r < 2; ++r) { // candidates for rescue
-		for (i = 0; i < n_hit[r]; ++i) {
-			if (hit[r][i].proper_pair == 0 && hit[r][i].p->dp_max >= max[r] - opt->pen_unpair * opt->a) { // reservior sampling
-				int32_t y;
-				y = j++ < n_res? j - 1 : (int32_t)(j * kom_u64todbl(kom_splitmix64(&rng)));
-				if (y < n_res) a[y] = (uint64_t)r << 32 | i;
-			}
-		}
-		ha[r].n = ha[r].m = n_hit[r], ha[r].a = hit[r];
-	}
-
-	// prepare query sequences
-	qs[0][0] = Kcalloc(km, uint8_t, (qlen[0] + qlen[1]) * 2);
-	qs[0][1] = qs[0][0] + qlen[0];
-	qs[1][0] = qs[0][1] + qlen[0];
-	qs[1][1] = qs[1][0] + qlen[1];
 	for (r = 0; r < 2; ++r) {
-		for (i = 0; i < qlen[r]; ++i) {
-			int32_t c = kom_nt4_table[(uint8_t)qseq[r][i]];
-			qs[r][0][i] = c;
-			qs[r][1][qlen[r] - 1 - i] = c < 4? 3 - c : 4;
-		}
+		ha[r].n = ha[r].m = n_hit[r];
+		ha[r].a = hit[r];
 	}
-
-	// do alignment
 	memset(&ez, 0, sizeof(ez));
 	ez.m_cigar = 8;
 	ez.cigar = Kmalloc(km, uint32_t, ez.m_cigar);
-	for (i = 0; i < n_res; ++i) {
-		int32_t r = a[i]>>32&1, j = (int32_t)a[i];
-		mb_matesw_core(km, opt, l2b, pes, &ha[r].a[j], r, qlen[!r], qs[!r], &ha[!r], &ez);
+	for (r = 0; r < 2; ++r) {
+		const mb_hit_t *h0 = ha[r].a; // don't use h0 = hit[r] because hit[1] may be reallocated in the last round
+		int32_t max = 0, n = n_hit[r]; // don't use n = ha[r].n because we want the original size
+		int32_t n_res, i, k, rest, *a;
+		uint8_t *qs[2];
+		// precalculate the number of rescue candidates
+		for (i = 0, n_res = 0; i < n; ++i)
+			if (h0[i].proper_pair == 0 && h0[i].p->dp_max >= max - opt->pen_unpair * opt->a)
+				++n_res;
+		if (n_res == 0) continue;
+		if (n_res > opt->max_rescue) n_res = opt->max_rescue;
+		// collect rescue candidates; assuming hits are sorted from the best to the worst
+		a = Kcalloc(km, int32_t, n_res);
+		rest = n_res;
+		for (i = 0, k = 0; i < n && rest > 0; ++i)
+			if (h0[i].proper_pair == 0 && h0[i].p->dp_max >= max - opt->pen_unpair * opt->a)
+				a[k++] = i, --rest;
+		// prepare sequence and do alignment
+		qs[0] = Kcalloc(km, uint8_t, qlen[!r] * 2); // sequence of the MATE of r
+		qs[1] = qs[0] + qlen[!r];
+		for (i = 0; i < qlen[!r]; ++i) {
+			int32_t c = kom_nt4_table[(uint8_t)qseq[!r][i]];
+			qs[0][i] = c;
+			qs[1][qlen[!r] - 1 - i] = c < 4? 3 - c : 4;
+		}
+		for (i = 0; i < n_res; ++i) // do alignment
+			mb_matesw_core(km, opt, l2b, pes, &ha[r].a[a[i]], r, qlen[!r], qs, &ha[!r], &ez);
+		kfree(km, qs[0]);
+		kfree(km, a);
 	}
+	n_add = (ha[0].n - n_hit[0]) + (ha[1].n - n_hit[1]);
 	for (r = 0; r < 2; ++r)
 		n_hit[r] = ha[r].n, hit[r] = ha[r].a;
-
 	kfree(km, ez.cigar);
-	kfree(km, qs[0][0]);
-	kfree(km, a);
-	return n_hit[0] + n_hit[1] - ori_sum;
+	return n_add;
 }
 
 void mb_pair(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_t n_hit[2], mb_hit_t *hit[2], const mb_pestat_t pes[4], int32_t qlen[2], char *const qseq[2])
