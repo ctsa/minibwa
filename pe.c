@@ -297,10 +297,12 @@ static int32_t mb_matesw(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_
 	ez.cigar = Kmalloc(km, uint32_t, ez.m_cigar);
 	for (r = 0; r < 2; ++r) {
 		const mb_hit_t *h0 = ha[r].a; // don't use h0 = hit[r] because hit[1] may be reallocated in the last round
-		int32_t max = 0, n = n_hit[r]; // don't use n = ha[r].n because we want the original size
-		int32_t n_res, i, k, rest, *a;
+		int32_t max, n = n_hit[r]; // don't use n = ha[r].n because we want the original size
+		int32_t n_res, i, k, *a;
 		uint8_t *qs[2];
+		if (n == 0) continue;
 		// precalculate the number of rescue candidates
+		max = h0[0].p->dp_max;
 		for (i = 0, n_res = 0; i < n; ++i)
 			if (h0[i].proper_pair == 0 && h0[i].p->dp_max >= max - opt->pen_unpair * opt->a)
 				++n_res;
@@ -308,10 +310,9 @@ static int32_t mb_matesw(void *km, const mb_opt_t *opt, const l2b_t *l2b, int32_
 		if (n_res > opt->max_rescue) n_res = opt->max_rescue;
 		// collect rescue candidates; assuming hits are sorted from the best to the worst
 		a = Kcalloc(km, int32_t, n_res);
-		rest = n_res;
-		for (i = 0, k = 0; i < n && rest > 0; ++i)
+		for (i = 0, k = 0; i < n && k < n_res; ++i)
 			if (h0[i].proper_pair == 0 && h0[i].p->dp_max >= max - opt->pen_unpair * opt->a)
-				a[k++] = i, --rest;
+				a[k++] = i;
 		// prepare sequence and do alignment
 		qs[0] = Kcalloc(km, uint8_t, qlen[!r] * 2); // sequence of the MATE of r
 		qs[1] = qs[0] + qlen[!r];
