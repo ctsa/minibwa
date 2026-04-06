@@ -4,6 +4,17 @@
 #include "kalloc.h"
 #include "kommon.h"
 
+static char *alloc_tmp(void *km, const mb_hit_t *r)
+{
+	int32_t i, min_tmp_len = 31;
+	for (i = 0; i < (int)r->p->n_cigar; ++i) {
+		int op = r->p->cigar[i]&0xf, len = r->p->cigar[i]>>4;
+		if (op == MB_CIGAR_INS || op == MB_CIGAR_DEL)
+			min_tmp_len = min_tmp_len > len + 5? min_tmp_len : len + 5;
+	}
+	return Kmalloc(km, char, min_tmp_len + 1);
+}
+
 static void write_indel_ds(void *km, kstring_t *str, int64_t len, const uint8_t *seq, int64_t ll, int64_t lr) // write an indel to ds; adapted from minigraph
 {
 	int64_t i;
@@ -33,9 +44,9 @@ static void write_indel_ds(void *km, kstring_t *str, int64_t len, const uint8_t 
 	}
 }
 
-void mb_write_cs_ds_core(void *km, kstring_t *s, const uint8_t *tseq, const uint8_t *qseq, const mb_hit_t *r, int is_ds)
+void mb_write_cs_ds(void *km, kstring_t *s, const uint8_t *tseq, const uint8_t *qseq, const mb_hit_t *r, int is_ds)
 {
-	int i, q_off, t_off, q_len = 0, t_len = 0, min_tmp_len = 31;
+	int i, q_off, t_off, q_len = 0, t_len = 0;
 	char *tmp;
 	km_sprintf_lite(km, s, "%cs:Z:", is_ds? 'd' : 'c');
 	for (i = 0; i < (int)r->p->n_cigar; ++i) {
@@ -43,14 +54,12 @@ void mb_write_cs_ds_core(void *km, kstring_t *s, const uint8_t *tseq, const uint
 		if (op == MB_CIGAR_MATCH || op == MB_CIGAR_EQ_MATCH || op == MB_CIGAR_X_MISMATCH) {
 			q_len += len, t_len += len;
 		} else if (op == MB_CIGAR_INS) {
-			min_tmp_len = min_tmp_len > len + 5? min_tmp_len : len + 5; // 5 for two [] and one +/-
 			q_len += len;
 		} else if (op == MB_CIGAR_DEL || op == MB_CIGAR_N_SKIP) {
-			min_tmp_len = min_tmp_len > len + 5? min_tmp_len : len + 5;
 			t_len += len;
 		}
 	}
-	tmp = Kmalloc(km, char, min_tmp_len + 1);
+	tmp = alloc_tmp(km, r);
 	for (i = q_off = t_off = 0; i < (int)r->p->n_cigar; ++i) {
 		int j, op = r->p->cigar[i]&0xf, len = r->p->cigar[i]>>4;
 		assert((op >= MB_CIGAR_MATCH && op <= MB_CIGAR_N_SKIP) || op == MB_CIGAR_EQ_MATCH || op == MB_CIGAR_X_MISMATCH);
@@ -113,6 +122,40 @@ void mb_write_cs_ds_core(void *km, kstring_t *s, const uint8_t *tseq, const uint
 			t_off += len;
 		}
 	}
+	kfree(km, tmp);
+	assert(t_off == r->te - r->ts && q_off == r->qe - r->qs);
+}
+
+void mb_write_MD(void *km, kstring_t *s, const uint8_t *tseq, const uint8_t *qseq, const mb_hit_t *r)
+{
+	int i, q_off, t_off, l_MD = 0;
+	char *tmp;
+	km_sprintf_lite(km, s, "\tMD:Z:");
+	tmp = alloc_tmp(km, r);
+	for (i = q_off = t_off = 0; i < (int)r->p->n_cigar; ++i) {
+		int j, op = r->p->cigar[i]&0xf, len = r->p->cigar[i]>>4;
+		assert((op >= MB_CIGAR_MATCH && op <= MB_CIGAR_N_SKIP) || op == MB_CIGAR_EQ_MATCH || op == MB_CIGAR_X_MISMATCH);
+		if (op == MB_CIGAR_MATCH || op == MB_CIGAR_EQ_MATCH || op == MB_CIGAR_X_MISMATCH) {
+			for (j = 0; j < len; ++j) {
+				if (qseq[q_off + j] != tseq[t_off + j]) {
+					km_sprintf_lite(km, s, "%d%c", l_MD, "ACGTN"[tseq[t_off + j]]);
+					l_MD = 0;
+				} else ++l_MD;
+			}
+			q_off += len, t_off += len;
+		} else if (op == MB_CIGAR_INS) {
+			q_off += len;
+		} else if (op == MB_CIGAR_DEL) {
+			for (j = 0, tmp[len] = 0; j < len; ++j)
+				tmp[j] = "ACGTN"[tseq[t_off + j]];
+			km_sprintf_lite(km, s, "%d^%s", l_MD, tmp);
+			l_MD = 0;
+			t_off += len;
+		} else if (op == MB_CIGAR_N_SKIP) {
+			t_off += len;
+		}
+	}
+	if (l_MD > 0) km_sprintf_lite(km, s, "%d", l_MD);
 	kfree(km, tmp);
 	assert(t_off == r->te - r->ts && q_off == r->qe - r->qs);
 }

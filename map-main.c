@@ -275,6 +275,7 @@ static ko_longopt_t long_options[] = {
 	{ "rescue",       ko_required_argument, 304 },
 	{ "ds",           ko_no_argument,       305 },
 	{ "cs",           ko_no_argument,       306 },
+	{ "MD",           ko_no_argument,       307 },
 	{ "dbg-aln-seq",  ko_no_argument,       601 },
 	{ "dbg-anchor",   ko_no_argument,       602 },
 	{ "dbg-seed",     ko_no_argument,       603 },
@@ -375,6 +376,8 @@ int main_map(int argc, char *argv[])
 			mo.flag |= MB_F_WRITE_DS;
 		} else if (c == 306) { // --cs
 			mo.flag |= MB_F_WRITE_CS;
+		} else if (c == 307) { // --MD
+			mo.flag |= MB_F_WRITE_MD;
 		} else if (c == 601) { // --dbg-aln-seq
 			kom_dbg_flag |= MB_DBG_ALN_SEQ;
 		} else if (c == 602) { // --dbg-anchor
