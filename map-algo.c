@@ -13,6 +13,42 @@ KRADIX_SORT_INIT(mb128x, mb128_t, key_128x, 8)
 KRADIX_SORT_INIT(mb64, uint64_t, key_64, 8)
 
 /*****************
+ * Index loading *
+ *****************/
+
+mb_idx_t *mb_idx_load(const char *prefix)
+{
+	char *buf;
+	mb_idx_t *idx = 0;
+	l2b_t *l2b;
+	mb_bwt_t *bwt;
+	buf = kom_calloc(char, strlen(prefix) + 5);
+	strcat(strcpy(buf, prefix), ".l2b");
+	l2b = l2b_load(buf);
+	if (l2b == 0) goto end_idx_load;
+	strcat(strcpy(buf, prefix), ".mbw");
+	bwt = mb_bwt_load(buf);
+	if (bwt == 0) {
+		l2b_destroy(l2b);
+		goto end_idx_load;
+	}
+	mb_bwt_cache(bwt, 10);
+	idx = kom_calloc(mb_idx_t, 1);
+	idx->l2b = l2b, idx->bwt = bwt;
+end_idx_load:
+	free(buf);
+	return idx;
+}
+
+void mb_idx_destroy(mb_idx_t *idx)
+{
+	if (idx == 0) return;
+	mb_bwt_destroy(idx->bwt);
+	l2b_destroy(idx->l2b);
+	free(idx);
+}
+
+/*****************
  * Thread buffer *
  *****************/
 
@@ -178,7 +214,7 @@ void mb_split_hit(mb_hit_t *r, mb_hit_t *r2, int n, int qlen, mb_anchor_t *a, co
 
 void mb_sync_hits(void *km, int n_regs, mb_hit_t *regs)
 {
-	int *tmp, i, max_id = -1, n_tmp, n_pri = 0;
+	int *tmp, i, max_id = -1, n_tmp;
 	if (n_regs <= 0) return;
 	for (i = 0; i < n_regs; ++i)
 		max_id = max_id > regs[i].id? max_id : regs[i].id;
@@ -197,11 +233,7 @@ void mb_sync_hits(void *km, int n_regs, mb_hit_t *regs)
 		else r->parent = MB_PARENT_UNSET;
 	}
 	kfree(km, tmp);
-	for (i = 0; i < n_regs; ++i)
-		if (regs[i].id == regs[i].parent) {
-			++n_pri;
-			regs[i].sam_pri = (n_pri == 1);
-		} else regs[i].sam_pri = 0;
+	mb_set_sam_pri(n_regs, regs);
 }
 
 /**********************************
@@ -278,6 +310,17 @@ add_primary:
 	}
 	kfree(km, cov);
 	kfree(km, w);
+}
+
+int mb_set_sam_pri(int n, mb_hit_t *r)
+{
+	int i, n_pri = 0;
+	for (i = 0; i < n; ++i)
+		if (r[i].id == r[i].parent) {
+			++n_pri;
+			r[i].sam_pri = (n_pri == 1);
+		} else r[i].sam_pri = 0;
+	return n_pri;
 }
 
 void mb_select_sub(void *km, float pri_ratio, int min_diff, int best_n, int *n_, mb_hit_t *r)
@@ -504,6 +547,7 @@ mb_hit_t *mb_map_sai(const mb_opt_t *opt, const mb_idx_t *idx, int64_t qlen, con
 		hit = mb_align_skeleton(b->km, opt, idx, qlen, seq, &n_hit, hit, a);
 		mb_set_parent(b->km, opt->mask_level, opt->mask_len, n_hit, hit, sub_diff, 0);
 		mb_select_sub(b->km, opt->pri_ratio, opt->min_len * 2, opt->best_n, &n_hit, hit);
+		mb_set_sam_pri(n_hit, hit);
 	}
 	for (i = 0; i < n_hit; ++i) hit[i].frac_high = (int32_t)(255. * hi_cov / qlen);
 	mb_set_mapq(b->km, n_hit, hit, opt->min_chain_score, opt->a, !(opt->flag & MB_F_LONG));

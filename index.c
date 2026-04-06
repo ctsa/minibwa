@@ -219,35 +219,3 @@ int main_index(int argc, char *argv[])
 	free(fn_bwt); free(fn_l2b);
 	return 0;
 }
-
-mb_idx_t *mb_idx_load(const char *prefix)
-{
-	char *buf;
-	mb_idx_t *idx = 0;
-	l2b_t *l2b;
-	mb_bwt_t *bwt;
-	buf = kom_calloc(char, strlen(prefix) + 5);
-	strcat(strcpy(buf, prefix), ".l2b");
-	l2b = l2b_load(buf);
-	if (l2b == 0) goto end_idx_load;
-	strcat(strcpy(buf, prefix), ".mbw");
-	bwt = mb_bwt_load(buf);
-	if (bwt == 0) {
-		l2b_destroy(l2b);
-		goto end_idx_load;
-	}
-	mb_bwt_cache(bwt, 10);
-	idx = kom_calloc(mb_idx_t, 1);
-	idx->l2b = l2b, idx->bwt = bwt;
-end_idx_load:
-	free(buf);
-	return idx;
-}
-
-void mb_idx_destroy(mb_idx_t *idx)
-{
-	if (idx == 0) return;
-	mb_bwt_destroy(idx->bwt);
-	l2b_destroy(idx->l2b);
-	free(idx);
-}
