@@ -661,15 +661,16 @@ static void mb_align1(void *km, const mb_opt_t *opt, const mb_idx_t *mi, int qle
 	}
 
 	for (i = 1; i < cnt1; ++i) { // gap filling
-		if ((a[as1+i].flag & MB_SEED_IGNORE) && i != cnt1 - 1) continue;
-		te1 = a[as1+i].tpos + 1 - mb_min_int32(a[as1+i].len>>1, max_back);
-		qe1 = a[as1+i].qpos + 1 - mb_min_int32(a[as1+i].len>>1, max_back);
+		const mb_anchor_t *ai = &a[as1 + i];
+		if ((ai->flag & MB_SEED_IGNORE) && i != cnt1 - 1) continue;
+		te1 = ai->tpos + 1 - mb_min_int32(ai->len>>1, max_back);
+		qe1 = ai->qpos + 1 - mb_min_int32(ai->len>>1, max_back);
 		if (i == cnt1 - 1 || (a[as1+i].flag&MB_SEED_LONG_JOIN) || (qe1 - qs >= opt->min_ksw_len && te1 - ts >= opt->min_ksw_len)) { // gap filling
 			int32_t j, bw1 = bw_long, zdrop_code;
 			int64_t d1 = 0; // distance from (qe1,te1) to trim
 			// compute ts and te
-			if (a[as1+i].len > opt->min_len * 2) {
-				d1 = te1 - (a[as1+i].tpos + 1 - a[as1+i].len); // distance to the start of the anchor
+			if (ai->len > opt->min_len * 2) {
+				d1 = te1 - (ai->tpos + 1 - ai->len); // distance to the start of the anchor
 				d1 = d1 < qe1 - qs? d1 : qe1 - qs;
 				d1 = d1 < te1 - ts? d1 : te1 - ts;
 				d1 -= opt->min_len;
