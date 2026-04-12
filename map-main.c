@@ -393,6 +393,7 @@ int main_map(int argc, char *argv[])
 		} else if (c == 304) { // --rescue
 			mo.max_rescue = atoi(o.arg);
 		} else if (c == 305) { // --aln-tag
+			mo.flag &= ~(MB_F_WRITE_CS|MB_F_WRITE_DS|MB_F_WRITE_MD);
 			if (o.arg == 0 || strcmp(o.arg, "cs") == 0) mo.flag |= MB_F_WRITE_CS;
 			else if (strcmp(o.arg, "ds") == 0) mo.flag |= MB_F_WRITE_DS;
 			else if (strcmp(o.arg, "MD") == 0 || strcmp(o.arg, "md") == 0) mo.flag |= MB_F_WRITE_MD;
