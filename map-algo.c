@@ -487,6 +487,7 @@ void mb_set_mapq(void *km, int32_t qlen, int n_regs, mb_hit_t *regs, int min_cha
 				mapq_sr = (int)(6.02 * x * x * (r->p->dp_max - r->p->dp_max2) / match_sc + .499f);
 				// minimap2 formula for long reads
 				x = (double)r->p->dp_max2 / r->p->dp_max;
+				if (subsc > r->score0) x *= (double)subsc / r->score0;
 				mapq_lr = (int)(pen_chn * identity * q_coef * (1.0 - x * x) * log((double)r->p->dp_max / match_sc));
 				// final mapq
 				if (is_sr) mapq = mapq_sr;

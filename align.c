@@ -850,7 +850,7 @@ static int32_t mb_recal_max_dp(const mb_hit_t *r, double b2, int32_t match_sc)
 	for (i = 0; i < r->p->n_cigar; ++i) {
 		int32_t op = r->p->cigar[i] & 0xf, len = r->p->cigar[i] >> 4;
 		if (op == MB_CIGAR_INS || op == MB_CIGAR_DEL) {
-			gap_cost += b2 + (double)mb_log2(1.0 + len);
+			gap_cost += b2 * mb_log2(1.0 + len);
 			n_gap += len;
 		}
 	}
