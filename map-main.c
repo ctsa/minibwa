@@ -196,7 +196,7 @@ static void *worker_pipeline(void *shared, int step, void *in)
 				mb_bseq1_t *t = &s->seq[i];
 				int32_t mate_qlen = 0; // mate's l_seq for MC:Z; 0 suppresses MC/MQ
 				if (seg_en - seg_st > 1) {
-					int32_t mate_idx = i != seg_en - 1? seg_st + 1 : seg_st; // wrap around if i is the last segment
+					int32_t mate_idx = i != seg_en - 1? i + 1 : seg_st; // wrap around if i is the last segment
 					mate_qlen = s->seq[mate_idx].l_seq;
 				}
 				tot_len += t->l_seq;
