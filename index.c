@@ -8,7 +8,7 @@
 
 void mb_bwtgen(const char *fn_pac, const char *fn_bwt, int block_size);
 
-mb_bwt_t *mb_bwt_libsais(const l2b_t *l2b, int sa_bit, int both_strand, int n_thread)
+static mb_bwt_t *mb_bwt_libsais(const l2b_t *l2b, int sa_bit, int both_strand, int n_thread)
 {
 	const int fs = 10000;
 	uint8_t *seq;
