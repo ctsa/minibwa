@@ -316,3 +316,57 @@ int l2b_save_pac(const char *fn, const l2b_t *l2b, int both_strand)
 	free(pac);
 	return 0;
 }
+
+static inline uint8_t l2b_c2t(uint8_t b) { return b == 1? 3 : b; } // C(1) -> T(3)
+static inline uint8_t l2b_g2a(uint8_t b) { return b == 2? 0 : b; } // G(2) -> A(0)
+
+int l2b_save_pac_meth(const char *fn, const l2b_t *l2b, int both_strand)
+{
+	FILE *fp;
+	uint64_t n_pac, x, len;
+	int64_t i;
+	uint8_t *pac, ct, b;
+
+	fp = fn == 0 || strcmp(fn, "-") == 0? stdout : fopen(fn, "wb");
+	if (fp == 0) return -1;
+
+	len = l2b->tot_len * 2; // c2t + g2a
+	if (both_strand) len *= 2; // forward + reverse
+	n_pac = (len + 3) / 4;
+	pac = kom_calloc(uint8_t, n_pac);
+
+	// c2t forward
+	for (i = 0, x = 0; i < l2b->tot_len; ++i, ++x) {
+		b = l2b_c2t(l2b_get0(l2b, i));
+		pac[x>>2] |= b << ((~x&3) * 2);
+	}
+	// g2a forward
+	for (i = 0; i < l2b->tot_len; ++i, ++x) {
+		b = l2b_g2a(l2b_get0(l2b, i));
+		pac[x>>2] |= b << ((~x&3) * 2);
+	}
+	if (both_strand) {
+		// g2a reverse (reverse complement of g2a converted sequence)
+		for (i = l2b->tot_len - 1; i >= 0; --i, ++x) {
+			b = 3 - l2b_g2a(l2b_get0(l2b, i));
+			pac[x>>2] |= b << ((~x&3) * 2);
+		}
+		// c2t reverse (reverse complement of c2t converted sequence)
+		for (i = l2b->tot_len - 1; i >= 0; --i, ++x) {
+			b = 3 - l2b_c2t(l2b_get0(l2b, i));
+			pac[x>>2] |= b << ((~x&3) * 2);
+		}
+	}
+
+	fwrite(pac, 1, (x>>2) + ((x&3) == 0? 0 : 1), fp);
+	if (x % 4 == 0) {
+		ct = 0;
+		fwrite(&ct, 1, 1, fp);
+	}
+	ct = x % 4;
+	fwrite(&ct, 1, 1, fp);
+
+	fclose(fp);
+	free(pac);
+	return 0;
+}

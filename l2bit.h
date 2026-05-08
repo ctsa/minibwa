@@ -39,6 +39,7 @@ int64_t l2b_getambi(const l2b_t *l2b, int64_t tid, int64_t st, int64_t en, int32
 l2b_t *l2b_import(const char *fn, uint64_t seed);
 int l2b_save(const char *fn, const l2b_t *l2b);
 int l2b_save_pac(const char *fn, const l2b_t *l2b, int both_strand);
+int l2b_save_pac_meth(const char *fn, const l2b_t *l2b, int both_strand);
 
 static inline int l2b_get0(const l2b_t *l2b, uint64_t i)
 {
