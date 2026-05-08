@@ -172,7 +172,7 @@ static void mb_anchor_dedup(mb_anchor_v *v) // NB: assuming sorted by tpos
 typedef struct { int64_t st, en; } anchor_aux_t;
 typedef struct { int64_t a, i; } sa_aux_t;
 
-static void process_batch(void *km, const mb_idx_t *idx, const anchor_aux_t *aux, int32_t m, const sa_aux_t *b, uint64_t *a, int32_t qlen, const mb_sai_v *u, mb_anchor_v *v)
+static void process_batch(void *km, const mb_idx_t *idx, const anchor_aux_t *aux, int32_t m, const sa_aux_t *b, uint64_t *a, int32_t qlen, l2b_meth_t mt, const mb_sai_v *u, mb_anchor_v *v)
 {
 	int64_t j, k;
 	for (k = 0; k < m; ++k) a[k] = b[k].a;
@@ -183,11 +183,19 @@ static void process_batch(void *km, const mb_idx_t *idx, const anchor_aux_t *aux
 			int32_t qs = u->a[j].info>>32, qe = (int32_t)u->a[j].info;
 			int32_t rev, len = qe - qs;
 			int64_t tid, cst;
+			l2b_meth_t mt_anchor;
 			const l2b_ctg_t *ctg;
 			mb_anchor_t *q;
-			tid = l2b_intv2cid(idx->l2b, a[k], a[k] + len, &cst, &rev);
-			rev = !!rev; // make sure rev is 0 or 1
-			if (tid < 0) continue; // bridging boundaries
+			if (mt != L2B_METH_NONE) {
+				tid = l2b_intv2cid_meth(idx->l2b, a[k], a[k] + len, &mt_anchor, &cst, &rev);
+				if (tid < 0) continue;
+				// R1(C2T): keep c2t_f(copy0) and g2a_r(copy2); R2(G2A): keep g2a_f(copy1) and c2t_r(copy3)
+				if ((mt_anchor == mt) != (rev == 0)) continue; // filter
+			} else {
+				tid = l2b_intv2cid(idx->l2b, a[k], a[k] + len, &cst, &rev);
+				if (tid < 0) continue;
+			}
+			rev = !!rev;
 			ctg = &idx->l2b->ctg[tid];
 			Kgrow(km, mb_anchor_t, v->a, v->n, v->m);
 			q = &v->a[v->n++];
@@ -203,7 +211,7 @@ static void process_batch(void *km, const mb_idx_t *idx, const anchor_aux_t *aux
 /* Converting seed intervals to anchors. This function batches small SA
  * intervals and calls mb_bwt_sa_batch() in process_batch(). With prefetch, the
  * strategy noticeably improves the performance. */
-void mb_anchor(void *km, const mb_idx_t *idx, mb_sai_v *u, int32_t qlen, int32_t max_occ, mb_anchor_v *v)
+void mb_anchor(void *km, const mb_idx_t *idx, mb_sai_v *u, int32_t qlen, l2b_meth_t mt, int32_t max_occ, mb_anchor_v *v)
 {
 	const int batch_size = 20;
 	int32_t n_aux, m, m_a;
@@ -235,7 +243,7 @@ void mb_anchor(void *km, const mb_idx_t *idx, mb_sai_v *u, int32_t qlen, int32_t
 		const anchor_aux_t *p = &aux[i];
 		const mb_sai_t *q = &u->a[p->st];
 		if (q->size + m > batch_size) {
-			process_batch(km, idx, aux, m, b, a, qlen, u, v);
+			process_batch(km, idx, aux, m, b, a, qlen, mt, u, v);
 			m = 0;
 		}
 		if (q->size <= max_occ) { // get SA for all of them
@@ -252,7 +260,7 @@ void mb_anchor(void *km, const mb_idx_t *idx, mb_sai_v *u, int32_t qlen, int32_t
 		}
 		assert(m <= m_a); // shouldn't happen!
 	}
-	process_batch(km, idx, aux, m, b, a, qlen, u, v);
+	process_batch(km, idx, aux, m, b, a, qlen, mt, u, v);
 	kfree(km, b);
 	kfree(km, a);
 	kfree(km, aux);
