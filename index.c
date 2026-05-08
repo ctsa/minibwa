@@ -8,7 +8,16 @@
 
 void mb_bwtgen(const char *fn_pac, const char *fn_bwt, int block_size);
 
-static mb_bwt_t *mb_bwt_libsais(const l2b_t *l2b, int sa_bit, int both_strand, int n_thread)
+static ko_longopt_t long_opts[] = { // common long options shared across all index-related functions
+	{ "help", ko_no_argument, 901 },
+	{ "meth", ko_no_argument, 902 },
+	{ 0, 0, 0 }
+};
+
+static inline uint8_t l2b_c2t(uint8_t b) { return b == 1? 3 : b; } // C(1) -> T(3)
+static inline uint8_t l2b_g2a(uint8_t b) { return b == 2? 0 : b; } // G(2) -> A(0)
+
+static mb_bwt_t *mb_bwt_libsais(const l2b_t *l2b, int sa_bit, int both_strand, int is_meth, int n_thread)
 {
 	const int fs = 10000;
 	uint8_t *seq;
@@ -16,14 +25,31 @@ static mb_bwt_t *mb_bwt_libsais(const l2b_t *l2b, int sa_bit, int both_strand, i
 	mb_bwt_t *bwt;
 	uint64_t *ssa, n_ssa, mask;
 
-	len = both_strand? l2b->tot_len * 2 : l2b->tot_len;
+	len = l2b->tot_len * (is_meth? 2 : 1) * (both_strand? 2 : 1);
 	seq = kom_malloc(uint8_t, len);
 	a = kom_malloc(int64_t, len + fs + 1);
-	for (i = 0, j = 0; i < l2b->tot_len; ++i, ++j)
-		seq[j] = l2b_get0(l2b, i);
-	if (both_strand)
-		for (i = l2b->tot_len - 1; i >= 0; --i, ++j)
-			seq[j] = 3 - l2b_get0(l2b, i);
+	if (is_meth) {
+		// c2t forward
+		for (i = 0, j = 0; i < l2b->tot_len; ++i, ++j)
+			seq[j] = l2b_c2t(l2b_get0(l2b, i));
+		// g2a forward
+		for (i = 0; i < l2b->tot_len; ++i, ++j)
+			seq[j] = l2b_g2a(l2b_get0(l2b, i));
+		if (both_strand) {
+			// g2a reverse (reverse complement of g2a converted)
+			for (i = l2b->tot_len - 1; i >= 0; --i, ++j)
+				seq[j] = 3 - l2b_g2a(l2b_get0(l2b, i));
+			// c2t reverse (reverse complement of c2t converted)
+			for (i = l2b->tot_len - 1; i >= 0; --i, ++j)
+				seq[j] = 3 - l2b_c2t(l2b_get0(l2b, i));
+		}
+	} else {
+		for (i = 0, j = 0; i < l2b->tot_len; ++i, ++j)
+			seq[j] = l2b_get0(l2b, i);
+		if (both_strand)
+			for (i = l2b->tot_len - 1; i >= 0; --i, ++j)
+				seq[j] = 3 - l2b_get0(l2b, i);
+	}
 #ifdef LIBSAIS_OPENMP
     libsais64_omp(seq, a + 1, len, fs, 0, n_thread);
 #else
@@ -71,10 +97,6 @@ int main_fa2bit(int argc, char *argv[])
 	uint64_t seed = 11;
 	ketopt_t o = KETOPT_INIT;
 	int c;
-	static ko_longopt_t long_opts[] = {
-		{ "help", ko_no_argument, 901 },
-		{ 0, 0, 0 }
-	};
 	while ((c = ketopt(&o, argc, argv, 1, "s:p2", long_opts)) >= 0) {
 		if (c == 's') seed = atol(o.arg);
 		else if (c == 'p') out_pac = 1;
@@ -107,10 +129,6 @@ int main_genraw(int argc, char *argv[])
 #ifdef USE_GPL
 	ketopt_t o = KETOPT_INIT;
 	int c, block_size = 10000000;
-	static ko_longopt_t long_opts[] = {
-		{ "help", ko_no_argument, 901 },
-		{ 0, 0, 0 }
-	};
 	while ((c = ketopt(&o, argc, argv, 1, "b:", long_opts)) >= 0) {
 		if (c == 'b') block_size = kom_parse_num(o.arg, 0);
 		else if (c == 901) return usage_genraw(stdout);
@@ -166,10 +184,6 @@ int main_genbwt(int argc, char *argv[])
 	int c, n_thread = 4, both_strand = 1, sa_bit = 4;
 	mb_bwt_t *bwt;
 	l2b_t *l2b;
-	static ko_longopt_t long_opts[] = {
-		{ "help", ko_no_argument, 901 },
-		{ 0, 0, 0 }
-	};
 	while ((c = ketopt(&o, argc, argv, 1, "1u:t:", long_opts)) >= 0) {
 		if (c == 't') n_thread = atoi(o.arg);
 		else if (c == '1') both_strand = 0;
@@ -179,7 +193,7 @@ int main_genbwt(int argc, char *argv[])
 	if (argc - o.ind < 2) return usage_genbwt(stderr, sa_bit, n_thread);
 	l2b = l2b_load(argv[o.ind]);
 	kom_assert(l2b, "failed to open the input file.");
-	bwt = mb_bwt_libsais(l2b, sa_bit, both_strand, n_thread);
+	bwt = mb_bwt_libsais(l2b, sa_bit, both_strand, 0, n_thread);
 	l2b_destroy(l2b);
 	mb_bwt_save(argv[o.ind+1], bwt);
 	mb_bwt_destroy(bwt);
@@ -201,10 +215,6 @@ int main_gensa(int argc, char *argv[])
 	mb_bwt_t *bwt;
 	int c, sa_bit = 4, is_raw = 0;
 	ketopt_t o = KETOPT_INIT;
-	static ko_longopt_t long_opts[] = {
-		{ "help", ko_no_argument, 901 },
-		{ 0, 0, 0 }
-	};
 	while ((c = ketopt(&o, argc, argv, 1, "ru:", long_opts)) >= 0) {
 		if (c == 'u') sa_bit = atoi(o.arg);
 		else if (c == 'r') is_raw = 1;
@@ -230,6 +240,7 @@ static int usage_index(FILE *fp, uint64_t seed, int sa_bit, int n_thread)
 #ifdef LIBSAIS_OPENMP
 	fprintf(fp, "  -t INT    number of threads (effective w/o -l) [%d]\n", n_thread);
 #endif
+	fprintf(fp, "  --meth    build FM-index for BS-seq mapping\n");
 	fprintf(fp, "  --help    print this help message\n");
 	return fp == stdout? 0 : 1;
 }
@@ -237,16 +248,12 @@ static int usage_index(FILE *fp, uint64_t seed, int sa_bit, int n_thread)
 int main_index(int argc, char *argv[])
 {
 	ketopt_t o = KETOPT_INIT;
-	int c, low_mem = 0, n_thread = 4, sa_bit = 4;
+	int c, low_mem = 0, n_thread = 4, sa_bit = 4, is_meth = 0;
 	int64_t block_size = 10000000;
 	uint64_t seed = 11;
-	char *prefix, *fn_l2b, *fn_bwt;
+	char *prefix, *fn_l2b, *fn_bwt, *fn_meth_bwt = 0;
 	l2b_t *l2b;
 	mb_bwt_t *bwt;
-	static ko_longopt_t long_opts[] = {
-		{ "help", ko_no_argument, 901 },
-		{ 0, 0, 0 }
-	};
 
 	while ((c = ketopt(&o, argc, argv, 1, "ls:u:b:t:", long_opts)) >= 0) {
 		if (c == 't') n_thread = atoi(o.arg);
@@ -255,14 +262,19 @@ int main_index(int argc, char *argv[])
 		else if (c == 'u') sa_bit = atoi(o.arg);
 		else if (c == 's') seed = atol(o.arg);
 		else if (c == 901) return usage_index(stdout, seed, sa_bit, n_thread);
+		else if (c == 902) is_meth = 1;
 	}
 	if (argc - o.ind == 0) return usage_index(stderr, seed, sa_bit, n_thread);
 
 	prefix = o.ind + 1 < argc? argv[o.ind+1] : argv[o.ind];
-	fn_l2b = kom_calloc(char, strlen(prefix) + 5);
+	fn_l2b = kom_calloc(char, strlen(prefix) + 10);
 	strcat(strcpy(fn_l2b, prefix), ".l2b");
-	fn_bwt = kom_calloc(char, strlen(prefix) + 5);
+	fn_bwt = kom_calloc(char, strlen(prefix) + 10);
 	strcat(strcpy(fn_bwt, prefix), ".mbw");
+	if (is_meth) {
+		fn_meth_bwt = kom_calloc(char, strlen(prefix) + 10);
+		strcat(strcpy(fn_meth_bwt, prefix), ".meth.mbw");
+	}
 
 	l2b = l2b_import(argv[o.ind], seed);
 	kom_assert(l2b, "failed to read the genome FASTA.");
@@ -273,17 +285,32 @@ int main_index(int argc, char *argv[])
 		l2b_save(fn_l2b, l2b);
 		bwt = mb_bwt_load_raw(fn_bwt);
 		mb_bwt_gen_sa(bwt, sa_bit);
+		mb_bwt_save(fn_bwt, bwt);
+		mb_bwt_destroy(bwt);
+		if (is_meth) {
+			l2b_save_pac_meth(fn_l2b, l2b, 1);
+			mb_bwtgen(fn_l2b, fn_meth_bwt, block_size);
+			bwt = mb_bwt_load_raw(fn_meth_bwt);
+			mb_bwt_gen_sa(bwt, sa_bit);
+			mb_bwt_save(fn_meth_bwt, bwt);
+			mb_bwt_destroy(bwt);
+		}
 #else
 		if (kom_verbose >= 1) fprintf(stderr, "ERROR: option -l not compiled as it depends on GPL'd code\n");
 		abort();
 #endif
 	} else {
 		l2b_save(fn_l2b, l2b);
-		bwt = mb_bwt_libsais(l2b, sa_bit, 1, n_thread);
+		bwt = mb_bwt_libsais(l2b, sa_bit, 1, 0, n_thread);
+		mb_bwt_save(fn_bwt, bwt);
+		mb_bwt_destroy(bwt);
+		if (is_meth) {
+			bwt = mb_bwt_libsais(l2b, sa_bit, 1, 1, n_thread);
+			mb_bwt_save(fn_meth_bwt, bwt);
+			mb_bwt_destroy(bwt);
+		}
 	}
-	mb_bwt_save(fn_bwt, bwt);
 	l2b_destroy(l2b);
-	mb_bwt_destroy(bwt);
-	free(fn_bwt); free(fn_l2b);
+	free(fn_meth_bwt); free(fn_bwt); free(fn_l2b);
 	return 0;
 }
