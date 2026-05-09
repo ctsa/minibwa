@@ -64,7 +64,6 @@ static void worker_for_se_batch(void *data, long i, int tid)
 			for (l = 0; l < t->l_seq; ++l)
 				seq[p][l] = kom_nt4_table[(uint8_t)t->seq[l]];
 			if (idx->is_meth) {
-				assert(cnt == 2);
 				if ((j&1) == 0) { // R1: C->T
 					for (l = 0; l < t->l_seq; ++l)
 						if (seq[p][l] == 1) seq[p][l] = 3;
@@ -329,6 +328,7 @@ static int usage(FILE *fp, const mb_opt_t *opt)
 	fprintf(fp, "    -R STR           SAM read group line in a format like '@RG\\tID:foo\\tSM:bar' []\n");
 	fprintf(fp, "    -b STR           output a base alignment tag: cs, ds or MD []\n");
 	fprintf(fp, "    -5               take the alignment with the smallest query position as primary\n");
+	fprintf(fp, "    --meth           mapping directional bisulfite sequencing reads\n");
 	fprintf(fp, "  Mapping:\n");
 	fprintf(fp, "    -k INT           min seed length [%d]\n", opt->min_len);
 	fprintf(fp, "    -c NUM           max seed occurrences [%d]\n", opt->max_occ);

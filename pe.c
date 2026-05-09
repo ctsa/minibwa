@@ -341,7 +341,7 @@ static const mb_hit_t *mb_matesw_core(void *km, const mb_opt_t *opt, const l2b_t
 			mb_hit_t ht;
 			ht.p = 0;
 			ref = Kmalloc(km, uint8_t, te - ts);
-			if (is_rev) mt = l2b_meth_rev(mt0); // TODO: check if this is correct!!
+			if (is_rev) mt = l2b_meth_rev(mt0);
 			l2b_getseq_meth(l2b, h0->tid, ts, te, mt, ref);
 			max_ug = mb_ungap(km, len, seq[is_rev], te - ts, ref, 7, &max_i, &n_good, &n_kmer);
 			if (max_ug >= 10 && max_ug >= len>>1 && n_good == 1) {
