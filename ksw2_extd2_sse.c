@@ -46,7 +46,7 @@ void ksw_extd2_sse(void *km, int qlen, const uint8_t *query, int tlen, const uin
 	a2= _mm_sub_epi8(a2, tmp); \
 	b2= _mm_sub_epi8(b2, tmp);
 
-	int r, t, qe = q + e, n_col_, *off = 0, *off_end = 0, tlen_, qlen_, last_st, last_en, wl, wr, max_sc, min_sc, long_thres, long_diff;
+	int r, t, qe = q + e, n_col_, *off = 0, *off_end = 0, tlen_, qlen_, last_st, last_en, last_max_H = 0, wl, wr, max_sc, min_sc, long_thres, long_diff;
 	int with_cigar = !(flag&KSW_EZ_SCORE_ONLY), approx_max = !!(flag&KSW_EZ_APPROX_MAX);
 	int32_t *H = 0, H0 = 0, last_H0_t = 0;
 	uint8_t *qr, *sf, *mem, *mem2 = 0;
@@ -345,6 +345,15 @@ void ksw_extd2_sse(void *km, int qlen, const uint8_t *query, int tlen, const uin
 			if (ksw_apply_zdrop(ez, 1, max_H, r, max_t, zdrop, e2)) break;
 			if (r == qlen + tlen - 2 && en0 == tlen - 1)
 				ez->score = H[tlen - 1];
+			// early stopping in the extension-only mode; this block should not change the alignment
+			if (flag & KSW_EZ_EXTZ_ONLY) {
+				int32_t rH = last_max_H > max_H? last_max_H : max_H; // NB: if diagonal r is on the optimal path, r-1 or r+1 is not on the optimal path
+				int32_t rq = qlen - (r - st0), rt = tlen - en0;
+				// 3 conditions: hitting bottom of the DP matrix, hitting the right boundary of the matrix, and bracketing the diagonal
+				int32_t rm = rq >= tlen - st0? tlen - st0 : rt >= qlen - (r - en0)? qlen - (r - en0) : tlen + qlen - 1 - r;
+				if (rH + rm * max_sc + end_bonus < ez->max) break;
+			}
+			last_max_H = max_H; // need this for calculating rH
 		} else { // find approximate max; Z-drop might be inaccurate, too.
 			if (r > 0) {
 				if (last_H0_t >= st0 && last_H0_t <= en0 && last_H0_t + 1 >= st0 && last_H0_t + 1 <= en0) {
