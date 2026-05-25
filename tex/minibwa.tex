@@ -542,17 +542,19 @@ The exact memory usage of Bismark could not be captured.}\label{fig:perf}
 \end{figure*}
 
 We obtained multiple whole-genome real datasets (see Data Availability) and aligned them to GRCh38 (Fig.~\ref{fig:perf}).
-For standard WGS short reads, strobealign is the fastest and Bowtie2 is the most memory efficient.
+For standard WGS short reads, strobealign is the fastest.
 BWA-MEM2 is 67\% faster than BWA-MEM and both BWA-MEME and BWA-MEM3 are even faster (Fig.~\ref{fig:perf}a).
 Minibwa is about four times as fast as BWA-MEM and more than twice as fast as BWA-MEM2.
 The gap between minibwa and other BWA-MEM implementations is smaller for Hi-C and Roche's single-end SBX reads,
 probably due to the lack of mate rescue where minibwa has an advantage with more heuristics (Section~\ref{sec:pe}).
-For long reads, minibwa is a little faster than minimap2 and is an order of magnitude faster than Winnowmap2.
+For long reads, minibwa is a little faster than minimap2 and both are an order of magnitude faster than Winnowmap2.
+For BS-seq data, minibwa is a few times faster than BWA-Meth and BISCUIT and over 10 times faster than Bismark.
+Across all six datasets, minibwa uses $<$20 GB memory at the peak, lower than most aligners except Bowtie2.
 
 \subsection{Effect on short-read variant calling}
 
 \begin{table}[b]
-\caption{Short-read variant calling accuracy}\label{tab:var}
+\caption{Short-read variant calling accuracy with DeepVariant}\label{tab:var}
 \tabcolsep=0pt%%
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lrrrr@{\extracolsep{\fill}}}
 \toprule
@@ -560,8 +562,9 @@ For long reads, minibwa is a little faster than minimap2 and is an order of magn
 \cline{2-3}\cline{4-5}
 Aligner & FN & FP & FN & FP \\
 \midrule
-BWA-MEM & 46,895 & 7,585 & 37,425 & 5,218 \\
-Minibwa & 46,367 & 7,544 & 36,321 & 5,308 \\
+minibwa     & 46,367 & 7,544 & 36,321 & 5,308 \\
+BWA-MEM     & 46,895 & 7,585 & 37,425 & 5,218 \\
+strobealign & 57,545 & 8,108 & 37,828 & 5,655 \\
 \botrule
 \end{tabular*}
 \end{table}
